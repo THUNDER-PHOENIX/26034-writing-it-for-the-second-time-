@@ -5,6 +5,7 @@ import Tesseract from "tesseract.js";
 import { runComplianceCheck, extractKeyFields } from "@/lib/rules";
 import { analyzeFontSize } from "@/lib/fontSize";
 import { saveScan } from "@/lib/storage";
+import { preprocessImageForOcr } from "@/lib/image/preprocess";
 
 type OcrSource = "server" | "tesseract";
 
@@ -108,18 +109,29 @@ export default function ScanPage() {
     if (!imageDataUrl) return;
     setRunning(true);
     setProgress(0);
-    setStatus("Loading OCR engine…");
+    setStatus("Preprocessing image…");
 
     let text = "";
     let words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[] = [];
     let imageHeight = 1000;
     let provider: OcrSource = "tesseract";
+    let processedDataUrl = imageDataUrl;
 
     try {
-      // Try the server (cloud) OCR first — much more accurate on real photos.
+      // 1. Preprocess for OCR (grayscale, contrast stretch, mild sharpen, resize).
+      try {
+        const pre = await preprocessImageForOcr(imageDataUrl);
+        processedDataUrl = pre.dataUrl;
+        setStatus(`Preprocessed ${pre.originalSize.w}x${pre.originalSize.h} → ${pre.newSize.w}x${pre.newSize.h}`);
+      } catch (e) {
+        console.warn("Preprocessing failed, using original image:", e);
+        setStatus("Preprocessing skipped, using original image");
+      }
+
+      // 2. Try server (cloud) OCR first.
       try {
         setStatus("Calling server OCR…");
-        const server = await recognizeOnServer(imageDataUrl);
+        const server = await recognizeOnServer(processedDataUrl);
         text = server.text;
         words = server.words;
         provider = "server";
@@ -130,7 +142,7 @@ export default function ScanPage() {
       } catch (serverErr) {
         console.warn("Server OCR failed, falling back to in-browser Tesseract:", serverErr);
         setStatus("Server unavailable, using local OCR (slower)…");
-        const fallback = await recognizeOnClient(imageDataUrl, (status, pct) => {
+        const fallback = await recognizeOnClient(processedDataUrl, (status, pct) => {
           setStatus(status);
           setProgress(pct);
         });
