@@ -7,6 +7,7 @@ import { analyzeFontSize } from "@/lib/fontSize";
 import { saveScan } from "@/lib/storage";
 import { preprocessImageForOcr } from "@/lib/image/preprocess";
 import { CATEGORY_OPTIONS, detectCategory, requiredRulesFor, type Category } from "@/lib/rules/categories";
+import { decodeBarcodeFromDataUrl } from "@/lib/barcode/zxing";
 
 type OcrSource = "server" | "tesseract";
 
@@ -118,8 +119,22 @@ export default function ScanPage() {
     let imageHeight = 1000;
     let provider: OcrSource = "tesseract";
     let processedDataUrl = imageDataUrl;
+    let barcodeValue: string | null = null;
 
     try {
+      // 0. Try to read a barcode from the original image (ZXing is faster
+      //    and more accurate than OCR-derived digit runs).
+      try {
+        const hit = await decodeBarcodeFromDataUrl(imageDataUrl);
+        if (hit) {
+          barcodeValue = hit.value;
+          setStatus(`Barcode detected: ${hit.value} (${hit.format})`);
+        }
+      } catch (e) {
+        // Not a hard failure — fall through to OCR.
+        console.warn("Barcode scan failed:", e);
+      }
+
       // 1. Preprocess for OCR (grayscale, contrast stretch, mild sharpen, resize).
       try {
         const pre = await preprocessImageForOcr(imageDataUrl);
@@ -189,6 +204,7 @@ export default function ScanPage() {
         scannedAt: new Date().toISOString(),
         ocrProvider: provider,
         category: effectiveCategory,
+        barcodeValue,
       });
       router.push(`/reports/${id}`);
     } catch (e) {

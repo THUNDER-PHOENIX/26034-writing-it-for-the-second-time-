@@ -82,6 +82,9 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
           <Row k="Net Quantity" v={scan.netQuantity} />
           <Row k="MRP" v={scan.mrp ? `Rs. ${scan.mrp}` : null} />
           <Row k="Mfg. Date" v={scan.mfgDate} />
+          {scan.barcodeValue && (
+            <Row k="Barcode" v={`${scan.barcodeValue} (decoded by ZXing)`} />
+          )}
         </div>
       </div>
 
