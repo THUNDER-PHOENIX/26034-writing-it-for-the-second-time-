@@ -6,7 +6,10 @@ export interface ScanRecord {
   productName: string;
   manufacturer: string | null;
   imageDataUrl: string | null;
+  imagePath?: string | null;
   ocrText: string;
+  ocrProvider?: string;
+  category?: string;
   mrp: string | null;
   netQuantity: string | null;
   mfgDate: string | null;
@@ -17,6 +20,7 @@ export interface ScanRecord {
   minorCount: number;
   violations: Violation[];
   fontFindings?: FontSizeFinding[];
+  barcodeValue?: string | null;
   inspector: string;
   location: string;
   scannedAt: string;

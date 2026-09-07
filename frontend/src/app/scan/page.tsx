@@ -6,6 +6,41 @@ import { runComplianceCheck, extractKeyFields } from "@/lib/rules";
 import { analyzeFontSize } from "@/lib/fontSize";
 import { saveScan } from "@/lib/storage";
 
+type OcrSource = "server" | "tesseract";
+
+async function recognizeOnServer(imageDataUrl: string): Promise<{
+  text: string;
+  words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[];
+  source: OcrSource;
+  raw?: unknown;
+}> {
+  const base64 = imageDataUrl.replace(/^data:[^;]+;base64,/, "");
+  const mime = (imageDataUrl.match(/^data:([^;]+);/) || [, "image/jpeg"])[1];
+  const resp = await fetch("/api/ocr", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ imageBase64: base64, mimeType: mime }),
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(`Server OCR unavailable: ${body?.error || resp.statusText}`);
+  }
+  const json = await resp.json();
+  if (!json?.text) throw new Error("Server OCR returned empty result");
+  return { text: json.text, words: json.words || [], source: "server", raw: json };
+}
+
+async function recognizeOnClient(imageDataUrl: string, onProgress?: (status: string, pct: number) => void) {
+  const result = await Tesseract.recognize(imageDataUrl, "eng", {
+    logger: (m) => {
+      if (onProgress) {
+        onProgress(m.status || "recognizing", typeof m.progress === "number" ? Math.round(m.progress * 100) : 0);
+      }
+    },
+  });
+  return { ...result, source: "tesseract" as const };
+}
+
 export default function ScanPage() {
   const router = useRouter();
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
@@ -18,6 +53,15 @@ export default function ScanPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraOn, setCameraOn] = useState(false);
+  const [ocrEngine, setOcrEngine] = useState<"server" | "client" | "unknown">("unknown");
+
+  useEffect(() => {
+    // Probe /api/ocr to show which engine will be used.
+    fetch("/api/ocr")
+      .then((r) => r.json())
+      .then((j) => setOcrEngine(j?.configured ? "server" : "client"))
+      .catch(() => setOcrEngine("client"));
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -65,35 +109,43 @@ export default function ScanPage() {
     setRunning(true);
     setProgress(0);
     setStatus("Loading OCR engine…");
-    try {
-      const recognizeArgs: Parameters<typeof Tesseract.recognize>[2] = {
-        logger: (m) => {
-          if (m.status) setStatus(m.status);
-          if (typeof m.progress === "number") setProgress(Math.round(m.progress * 100));
-        },
-      };
 
-      let result: Awaited<ReturnType<typeof Tesseract.recognize>>;
+    let text = "";
+    let words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[] = [];
+    let imageHeight = 1000;
+    let provider: OcrSource = "tesseract";
+
+    try {
+      // Try the server (cloud) OCR first — much more accurate on real photos.
       try {
-        result = await Tesseract.recognize(imageDataUrl, "eng", recognizeArgs);
-      } catch (innerErr) {
-        console.warn("Tesseract failed with default config, retrying without logger", innerErr);
-        result = await Tesseract.recognize(imageDataUrl, "eng", {});
+        setStatus("Calling server OCR…");
+        const server = await recognizeOnServer(imageDataUrl);
+        text = server.text;
+        words = server.words;
+        provider = "server";
+        if (words.length > 0) {
+          imageHeight = Math.max(...words.map((w) => w.bbox.y1), 1000);
+        }
+        setStatus(`Server OCR (${words.length} words)`);
+      } catch (serverErr) {
+        console.warn("Server OCR failed, falling back to in-browser Tesseract:", serverErr);
+        setStatus("Server unavailable, using local OCR (slower)…");
+        const fallback = await recognizeOnClient(imageDataUrl, (status, pct) => {
+          setStatus(status);
+          setProgress(pct);
+        });
+        text = fallback.data?.text || "";
+        words = (fallback.data?.words || []).map((w) => ({
+          text: w.text,
+          bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
+          confidence: w.confidence,
+        }));
+        imageHeight = (fallback.data as { imageHeight?: number })?.imageHeight ?? Math.max(...words.map((w) => w.bbox.y1), 1000);
+        provider = "tesseract";
       }
 
-      const data = result.data;
-      const text = data?.text || "";
       const fields = extractKeyFields(text);
       const result_ = runComplianceCheck(text);
-
-      const words = ((data as { words?: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[] })?.words || []).map((w) => ({
-        text: w.text,
-        bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
-        confidence: w.confidence,
-      }));
-      const dataAny = data as { imageHeight?: number };
-      const maxWordY = words.reduce((m, w) => Math.max(m, w.bbox.y1), 0);
-      const imageHeight = dataAny.imageHeight ?? (maxWordY > 0 ? maxWordY : 1000);
       const fontFindings = analyzeFontSize(words, imageHeight, result_.violations);
 
       const id = `scan-${Date.now()}`;
@@ -116,7 +168,8 @@ export default function ScanPage() {
         inspector,
         location: location || "—",
         scannedAt: new Date().toISOString(),
-      });
+        ocrProvider: provider,
+      } as never);
       router.push(`/reports/${id}`);
     } catch (e) {
       const msg = (e as Error)?.message || String(e);
@@ -138,6 +191,14 @@ export default function ScanPage() {
       <div>
         <h1 className="text-2xl font-semibold">Scan a Product</h1>
         <p className="text-slate-500 text-sm">Upload a clear image of the product label and run automated compliance check.</p>
+        <div className="mt-2 text-xs">
+          {ocrEngine === "server" && (
+            <span className="badge badge-green" title="OCR.space server-side OCR with image preprocessing. Best accuracy on real product photos.">OCR: Cloud (high accuracy)</span>
+          )}
+          {ocrEngine === "client" && (
+            <span className="badge badge-yellow" title="Server OCR not configured. Falling back to in-browser Tesseract.js.">OCR: Browser (offline)</span>
+          )}
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
