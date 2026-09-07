@@ -20,6 +20,24 @@ export interface Violation {
   matchedValue?: string;
 }
 
+// MRP head — match MRP / mrp / m.r.p. / M.R.P. (with optional trailing dot).
+// Use a lookahead `(?:\.|\b)` for the trailing boundary so the optional dot
+// after M.R.P. doesn't break the word-boundary check.
+const MRP_HEAD = String.raw`(?:maximum\s*retail\s*price|m\.?\s*r\.?\s*p\.?|mrp)(?:\.|\b)`;
+const MRP_PRICE_TAIL = String.raw`\s*[:\-]?\s*(?:rs\.?|inr|₹|m\.?r\.?p\.?)?\s*\.?\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)`;
+
+// Date token — accept MM/YY, MM/YYYY, YYYY/MM, YYYY-MM, MMM YYYY, "15 Sep 2024".
+const DATE_TOKEN = String.raw`(?:[0-9]{1,2}[\/\-\.\s][0-9]{1,2}[\/\-\.\s][0-9]{2,4}|[0-9]{1,2}[\/\-\.][0-9]{2,4}|[0-9]{4}[\/\-\.][0-9]{1,2}|[A-Za-z]{3,9}[\-\.\s,]+[0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{2,4})`;
+
+// Spelled-out small numbers + digits.
+const NUM_WORD = String.raw`(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)`;
+const DURATION = String.raw`(?:days?|weeks?|months?|years?|day|week|month|year)`;
+
+// Company-suffix alternation. Written without the `i` flag so the *prefix*
+// word-initial lookaheads `(?=[A-Z])` actually require uppercase (the `i` flag
+// would relax the character class and let "months from mfg" match by accident).
+const COMPANY_SUFFIX = String.raw`(?:[Pp][Vv][Tt]\.?\s*[Ll][Tt][Dd]\.?|[Ll][Tt][Dd]\.?|[Ll][Ii][Mm][Ii][Tt][Ee][Dd]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]\s+[Ll][Ii][Mm][Ii][Tt][Ee][Dd]|[Ii][Nn][Dd][Uu][Ss][Tt][Rr][Ii][Ee][Ss]|[Ee][Nn][Tt][Ee][Rr][Pp][Rr][Ii][Ss][Ee][Ss]|[Ff][Oo][Oo][Dd][Ss]|[Pp][Rr][Oo][Dd][Uu][Cc][Tt][Ss]|[Cc][Oo][Mm][Pp][Aa][Nn][Yy]|[Cc][Oo]\.?|[Cc][Oo][Rr][Pp][Oo][Rr][Aa][Tt][Ii][Oo][Nn])`;
+
 const RULES: DeclarationRule[] = [
   {
     id: "manufacturer_address",
@@ -28,8 +46,16 @@ const RULES: DeclarationRule[] = [
       "Every package must bear the name and complete address (including pincode) of the manufacturer or packer or importer.",
     ruleRef: "Rule 6(1)(a), Schedule II Part I",
     patterns: [
-      /\b(mfd\.?\s*by|mfg\.?\s*by|manufactured\s*by|packed\s*by|imported\s*by|marketed\s*by)\b\s*[:\-]?\s*([A-Za-z0-9 ,&.'\-\/]{3,})/i,
-      /[A-Za-z][A-Za-z0-9 ,&.'\-\/]{5,}\b(?:pvt\.?|ltd\.?|limited|industries|enterprises|foods|products|company)\b/i,
+      new RegExp(
+        String.raw`\b(mfd\.?\s*by|mfg\.?\s*by|manufactured\s*by|packed\s*by|imported\s*by|marketed\s*by|bottled\s*by|marketed\s*&?\s*imported\s*by)\b\s*[:\-]?\s*([A-Z][A-Za-z0-9 ()\,&.'\-\/]{2,60}?)(?=\s*(?:[.,;]|\n|$|\s+(?:Plot|Flat|Survey|No\.?|Road|Street|MIDC|Phase|India|Mumbai|Delhi|Bengaluru|Hyderabad|Chennai|Kolkata|\d{6}|Net|MRP|Mfg|Mfd|Best|Ing|Customer|Email|Tel|Ph|FAX|Made|Care|Pvt|Ltd|Limited|Company|Industries|Enterprises|Foods|Products|State|Pin)))`,
+        "i"
+      ),
+      // No `i` flag: require a capitalized first word and capitalized subsequent words
+      // (so "Best Before" or "months from" don't match), while still matching suffixes
+      // like "Pvt. Ltd." / "Limited" / "Co." via explicit per-letter character classes.
+      new RegExp(
+        String.raw`\b(?=[A-Z])[A-Za-z]+(?:\s+(?=[A-Z])[A-Za-z&.\-]+){0,5}\s+${COMPANY_SUFFIX}\b`
+      ),
     ],
     severity: "critical",
   },
@@ -40,8 +66,8 @@ const RULES: DeclarationRule[] = [
       "Net quantity in terms of weight, measure or number must be declared in metric units (g, kg, ml, L).",
     ruleRef: "Rule 6(1)(b), Schedule II Part II",
     patterns: [
-      /\b(net\s*wt\.?|net\s*weight|net\s*qty|quantity|contents|net)\b\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g|gm|gram|grams|kg|kilogram|ml|millilitre|l|litre|liter|nos?|pieces?)\b/i,
-      /\b([0-9]+(?:\.[0-9]+)?)\s*(g|gm|kg|ml|l|kgf|nos?)\b/i,
+      /\b(net\s*(?:wt\.?|weight|vol\.?|volume|qty\.?|quantity|contents?)|contents|quantity)\b\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g|gm|gram|grams|kg|kilogram|kgs|ml|millilitre|millilitres|l|lt|litre|litres|liter|liters|nos?|pcs|pieces?)\b/i,
+      /(?<![A-Za-z0-9.])([0-9]+(?:\.[0-9]+)?)\s*(g|gm|kg|ml|l|nos?)\b(?![A-Za-z])/i,
     ],
     severity: "critical",
   },
@@ -52,8 +78,9 @@ const RULES: DeclarationRule[] = [
       "MRP must be declared, must include all taxes, and the words 'Maximum Retail Price' or 'MRP' must precede the price.",
     ruleRef: "Rule 6(1)(c)",
     patterns: [
-      /\b(?:maximum\s*retail\s*price|mrp|m\.r\.p\.?)\b\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*\.?\s*([0-9]+(?:\.[0-9]+)?)/i,
-      /₹\s*([0-9]+(?:\.[0-9]+)?)/,
+      new RegExp(String.raw`\b${MRP_HEAD}${MRP_PRICE_TAIL}`, "i"),
+      /₹\s*([0-9]+(?:[.,][0-9]{1,2})?)/,
+      /\bprice\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i,
     ],
     severity: "critical",
   },
@@ -64,9 +91,14 @@ const RULES: DeclarationRule[] = [
       "Month and year of manufacture or packing or import must be declared.",
     ruleRef: "Rule 6(1)(d)",
     patterns: [
-      /\b(?:mfg\.?|mfd\.?|mfg\.?\s*date|manufactured\s*on|packed\s*on|best\s*before|expiry|exp\.?)\b\s*[:\-]?\s*([0-9]{1,2}[\/\-\.][0-9]{2,4}|[A-Za-z]{3,9}\s*[0-9]{2,4}|[0-9]{1,2}[\/\-\.][0-9]{4})/i,
-      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s*[0-9]{2,4}\b/i,
-      /\b[0-9]{1,2}[\/\-\.][0-9]{4}\b/,
+      new RegExp(
+        String.raw`\b(?:mfg\.?|mfd\.?|mfg\.?\s*date|mfd\.?\s*date|manufactured\s*on|packed\s*on|manufacturing\s*date|date\s*of\s*(?:mfg|mfd|manufacture|packing|packaging|import))\b\s*[:\-]?\s*${DATE_TOKEN}`,
+        "i"
+      ),
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?[\s\-\.,]+([0-9]{2,4})\b/i,
+      /(?<![0-9])([0-9]{4}[\/\-\.][0-9]{1,2})(?![0-9])/,
+      /(?<![0-9])([0-9]{1,2}[\/\-\.][0-9]{4})(?![0-9])/,
+      /(?<![0-9])([0-9]{1,2}[\/\-\.][0-9]{2})(?![0-9])/,
     ],
     severity: "major",
   },
@@ -77,7 +109,7 @@ const RULES: DeclarationRule[] = [
       "For imported packages, the country of origin must be declared.",
     ruleRef: "Rule 6(1)(e)",
     patterns: [
-      /\b(made\s*in|product\s*of|manufactured\s*in|country\s*of\s*origin|imported\s*from)\b\s*[:\-]?\s*([A-Za-z][A-Za-z\s]{2,30})/i,
+      /\b(made\s*in|product\s*of|manufactured\s*in|produced\s*in|country\s*of\s*origin|imported\s*from|origin\s*[:\-])\b\s*[:\-]?\s*([A-Za-z][A-Za-z\s]{2,30}?)(?=[.,;\n]|$)/i,
     ],
     severity: "major",
   },
@@ -88,8 +120,9 @@ const RULES: DeclarationRule[] = [
       "Name, address, telephone, email of the person responsible for consumer complaints.",
     ruleRef: "Rule 6(1)(f)",
     patterns: [
-      /\b(customer\s*care|consumer\s*care|for\s*complaints|for\s*queries|feedback|contact\s*us)\b/i,
-      /\b(0?[0-9]{10})\b/,
+      /\b(customer\s*care|consumer\s*care|for\s*complaints|for\s*queries|feedback|contact\s*us|consumer\s*cell|complaint\s*cell|grievance\s*officer)\b/i,
+      /\b(?:\+?91[\s\-]?)?(?:0[\s\-]?)?(?:6|7|8|9)[0-9]{9}\b/,
+      /\b1800[\s\-]?[0-9]{3,4}[\s\-]?[0-9]{3,4}\b/,
       /\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b/i,
     ],
     severity: "major",
@@ -101,7 +134,14 @@ const RULES: DeclarationRule[] = [
       "Best before or expiry date for food articles, in plain language.",
     ruleRef: "Rule 6(1)(g) & 18",
     patterns: [
-      /\b(best\s*before|use\s*before|expiry|exp\.?\s*date|shelf\s*life)\b\s*[:\-]?\s*([0-9]{1,2}[\/\-\.][0-9]{2,4}|[A-Za-z]{3,9}\s*[0-9]{2,4}|[0-9]+\s*(days?|months?|years?))/i,
+      new RegExp(
+        String.raw`\b(best\s*before|use\s*before|expiry|exp\.?\s*date|expires\s*on|shelf\s*life)\b\s*[:\-]?\s*(${DATE_TOKEN}|${NUM_WORD}\s+${DURATION})`,
+        "i"
+      ),
+      new RegExp(
+        String.raw`\b(best\s*before|use\s*before|expiry|exp\.?\s*date|expires\s*on|shelf\s*life)\b[^\n]{0,40}?${DURATION}`,
+        "i"
+      ),
     ],
     severity: "major",
   },
@@ -112,7 +152,8 @@ const RULES: DeclarationRule[] = [
       "List of ingredients for food articles in descending order of composition.",
     ruleRef: "Rule 6(1)(h) & 42",
     patterns: [
-      /\bingredients?\b\s*[:\-]/i,
+      /\bing[\s\-.]?redients?\b\s*[:\-]/i,
+      /\bingredients?\b/i,
     ],
     severity: "major",
   },
@@ -123,8 +164,8 @@ const RULES: DeclarationRule[] = [
       "Nutritional information per 100g or 100ml or per serving for food articles.",
     ruleRef: "Rule 6(1)(i) & 42(2)",
     patterns: [
-      /\b(nutritional\s*(?:information|facts?)|nutrition\s*facts?)\b/i,
-      /\b(energy|protein|carbohydrate|fat|sugar|sodium|cholesterol)\b\s*[:\-]?\s*[0-9]/i,
+      /\b(nutritional\s*(?:information|facts?)|nutrition\s*facts?|nutrition\s*information)\b/i,
+      /\b(energy|protein|carbohydrate|carbs|saturated\s*fat|trans\s*fat|fibre|fiber|sugar|sodium|cholesterol)\b\s*[:\-]?\s*[0-9]/i,
     ],
     severity: "minor",
   },
@@ -135,8 +176,7 @@ const RULES: DeclarationRule[] = [
       "Green dot for vegetarian, brown dot for non-vegetarian food.",
     ruleRef: "Rule 6(1)(j) & 33",
     patterns: [
-      /\b(veg(?:etarian)?|veg\.?\s*symbol|green\s*dot)\b/i,
-      /\b(non[\s\-]?veg(?:etarian)?|brown\s*dot)\b/i,
+      /\b(veg(?:etarian)?|veg\.?\s*symbol|green\s*dot|brown\s*dot|non[\s\-]?veg(?:etarian)?)\b/i,
     ],
     severity: "minor",
   },
@@ -148,8 +188,10 @@ const RULES: DeclarationRule[] = [
     ruleRef: "Rule 6(1)(f) read with 35",
     patterns: [
       /\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b/i,
-      /\b(0?[0-9]{10}|\+91[\s\-]?[0-9]{10}|1800[\s\-]?[0-9\-]+)\b/,
-      /\b(toll\s*free|customer\s*care\s*no)\b/i,
+      /\b(?:\+?91[\s\-]?)?(?:0[\s\-]?)?(?:6|7|8|9)[0-9]{9}\b/,
+      /\b1800[\s\-]?[0-9]{3,4}[\s\-]?[0-9]{3,4}\b/,
+      /\b1[\s\-]?800[\s\-]?[0-9]{3,4}[\s\-]?[0-9]{3,4}\b/,
+      /\b(toll\s*free|customer\s*care\s*no|helpline)\b/i,
     ],
     severity: "minor",
   },
@@ -160,7 +202,11 @@ const RULES: DeclarationRule[] = [
       "A machine-readable barcode is generally present on packaged commodities.",
     ruleRef: "Rule 6(1)(k) (industry practice)",
     patterns: [
-      /\b([0-9]{8}|[0-9]{12}|[0-9]{13})\b/,
+      // Prefer 12/13-digit EAN/UPC — they are unambiguous.
+      /(?<![0-9])([0-9]{12}|[0-9]{13})(?![0-9])/,
+      // Fallback: 8-digit EAN-8 only when the digits are surrounded by whitespace/start/end
+      // (to avoid matching the 8-digit tail of a phone number like 022-23821000).
+      /(?<!\d)(?<=\s|^)([0-9]{8})(?=\s|$)/,
     ],
     severity: "minor",
   },
@@ -235,21 +281,58 @@ export function runComplianceCheck(ocrText: string): {
 
 export function extractKeyFields(ocrText: string) {
   const text = ocrText.replace(/\s+/g, " ");
-  const mrpMatch = text.match(/\b(?:maximum\s*retail\s*price|mrp|m\.r\.p\.?)\b\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*\.?\s*([0-9]+(?:\.[0-9]+)?)/i)
-    || text.match(/₹\s*([0-9]+(?:\.[0-9]+)?)/);
-  const netMatch = text.match(/\b([0-9]+(?:\.[0-9]+)?)\s*(g|gm|gram|grams|kg|kilogram|ml|millilitre|l|litre|liter|kgf|nos?|pieces?)\b/i);
-  const mfgMatch = text.match(/\b(?:mfg\.?|mfd\.?|manufactured\s*on|packed\s*on|mfg\.?\s*date|mfd\.?\s*date)\b[^A-Za-z0-9]{0,6}([0-9]{1,2}[\/\-\.][0-9]{2,4}|[A-Za-z]{3,9}\s*[0-9]{2,4})/i)
-    || text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*[0-9]{2,4}\b/i);
-  const companyMatch = text.match(/\b(mfd\.?\s*by|mfg\.?\s*by|manufactured\s*by|packed\s*by|imported\s*by|marketed\s*by)\b\s*[:\-]?\s*([A-Z][A-Za-z0-9 ,&.'\-\/]{2,80}?)(?=\s+(?:Plot|Flat|Plot|Survey|No\.|Road|Street|MIDC|Phase|\d{6}|Net|MRP|Mfg|Mfd|Best|Ing|Customer|India|Email|Tel|Ph|FAX|Made)|\n|$)/i)
-    || text.match(/\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,4})\s+(PVT\.?\s*LTD\.?|LTD\.?|LIMITED|PRIVATE\s+LIMITED|INDUSTRIES|ENTERPRISES|FOODS|PRODUCTS|COMPANY|CO\.)\b/i);
+
+  const mrpMatch =
+    text.match(new RegExp(String.raw`\b${MRP_HEAD}${MRP_PRICE_TAIL}`, "i")) ||
+    text.match(/₹\s*([0-9]+(?:[.,][0-9]{1,2})?)/) ||
+    text.match(/\bprice\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i);
+
+  const netMatch =
+    text.match(
+      /\b(?:net\s*(?:wt\.?|weight|vol\.?|volume|qty\.?|quantity|contents?)|contents|quantity)\b\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g|gm|gram|grams|kg|kilogram|kgs|ml|millilitre|millilitres|l|lt|litre|litres|liter|liters|nos?|pcs|pieces?)\b/i
+    ) ||
+    text.match(/(?<![A-Za-z0-9.])([0-9]+(?:\.[0-9]+)?)\s*(g|gm|kg|ml|l|nos?)\b(?![A-Za-z])/i);
+
+  const mfgMatch =
+    text.match(
+      new RegExp(
+        String.raw`\b(?:mfg\.?|mfd\.?|mfg\.?\s*date|mfd\.?\s*date|manufactured\s*on|packed\s*on|date\s*of\s*(?:mfg|mfd|manufacture|packing|packaging|import))\b\s*[:\-]?\s*(${DATE_TOKEN})`,
+        "i"
+      )
+    ) ||
+    text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?[\s\-\.,]+([0-9]{2,4})\b/i) ||
+    text.match(/(?<![0-9])([0-9]{4}[\/\-\.][0-9]{1,2})(?![0-9])/) ||
+    text.match(/(?<![0-9])([0-9]{1,2}[\/\-\.][0-9]{4})(?![0-9])/) ||
+    text.match(/(?<![0-9])([0-9]{1,2}[\/\-\.][0-9]{2})(?![0-9])/);
+
+  const companyMatch =
+    text.match(
+      /\b(mfd\.?\s*by|mfg\.?\s*by|manufactured\s*by|packed\s*by|imported\s*by|marketed\s*by|bottled\s*by|marketed\s*&?\s*imported\s*by)\b\s*[:\-]?\s*([A-Z][A-Za-z0-9 ()\,&.'\-\/]{2,60}?)(?=\s*(?:[.,;]|\n|$|\s+(?:Plot|Flat|Survey|No\.?|Road|Street|MIDC|Phase|India|Mumbai|Delhi|Bengaluru|Hyderabad|Chennai|Kolkata|\d{6}|Net|MRP|Mfg|Mfd|Best|Ing|Customer|Email|Tel|Ph|FAX|Made|Care|Pvt|Ltd|Limited|Company|Industries|Enterprises|Foods|Products|State|Pin)))/i
+    ) ||
+    text.match(
+      new RegExp(
+        String.raw`\b(?=[A-Z])([A-Za-z]+(?:\s+(?=[A-Z])[A-Za-z&.\-]+){0,5})\s+(${COMPANY_SUFFIX})\b`
+      )
+    );
 
   let company: string | null = null;
   if (companyMatch) {
-    company = (companyMatch[2] || companyMatch[1] || "").trim().replace(/[\s\.,]+$/, "");
+    // The second alternation (PVT/LTD pattern) captures prefix in group 1 and
+    // suffix in group 2 — combine them so the result is "Parle Products Pvt. Ltd."
+    // instead of just "Pvt. Ltd.".
+    const isSecondPattern = companyMatch[1] && companyMatch[2] && /^(PVT\.?\s*LTD\.?|LTD\.?|LIMITED|PRIVATE\s+LIMITED|INDUSTRIES|ENTERPRISES|FOODS|PRODUCTS|COMPANY|CO\.?|CORPORATION)$/i.test(companyMatch[2]);
+    if (isSecondPattern) {
+      company = `${companyMatch[1]} ${companyMatch[2]}`;
+    } else {
+      company = (companyMatch[2] || companyMatch[1] || "").trim().replace(/[\s.,;:]+$/, "");
+    }
+    if (company && /^(pvt\.?\s*ltd\.?|ltd\.?|limited|company|co\.?)$/i.test(company)) {
+      company = null;
+    }
   }
 
   return {
-    mrp: mrpMatch ? mrpMatch[1] : null,
+    mrp: mrpMatch ? mrpMatch[1].replace(/,/g, ".") : null,
     netQuantity: netMatch ? `${netMatch[1]} ${netMatch[2]}` : null,
     mfgDate: mfgMatch ? mfgMatch[1].trim() : null,
     company,
