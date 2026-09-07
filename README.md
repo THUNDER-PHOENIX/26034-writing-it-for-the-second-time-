@@ -10,8 +10,9 @@ Built for **Smart India Hackathon — Problem Statement 26034**.
 
 ```
 .
-├── frontend/        ← Next.js 14 app (this is what you run / deploy)
-└── README.md        ← (this file)
+├── frontend/            ← Next.js 14 app (this is what you run / deploy)
+├── opencode-writing-my-code/   ← original SIH write-up (gitlink)
+└── README.md            ← (this file)
 ```
 
 ## Quick start
@@ -27,7 +28,7 @@ Then open http://localhost:3000.
 ## Demo flow (60 seconds)
 
 1. Open `/scan` → click **"Try a sample"** (loads a test image instantly)
-2. Click **"Run Compliance Check"** — OCR runs in the browser, ~5–10s
+2. Click **"Run Compliance Check"** — OCR runs (~5–10s)
 3. See the green **COMPLIANT** score (91% on the sample)
 4. Click **"Download PDF"** for the official-looking report
 5. Open `/` for the dashboard view
@@ -35,10 +36,21 @@ Then open http://localhost:3000.
 ## Tech stack
 
 - **Next.js 14** (App Router) + TypeScript
-- **Tesseract.js 5** (browser-side OCR, no API keys)
+- **OCR.space** server-side OCR (free tier, 25k req/month, no credit card) with **Tesseract.js 5** as offline fallback
+- **jimp** in-browser image preprocessing (resize, grayscale, contrast stretch, sharpen) before OCR
+- **ZXing-js** barcode scanner (decodes EAN-8/12/13, UPC, Code-128, QR)
+- **Supabase** for cross-device persistence + image storage (Postgres + Storage bucket), with localStorage fallback
 - **jsPDF** + autoTable (PDF generation)
 - **TailwindCSS** (styling)
-- **localStorage** (history — Supabase-ready schema)
+- **Per-category rule model** (food / beverage / cosmetic / drug / consumer-good) so the score reflects what *should* be on the product
+
+## Deployment
+
+The project is configured for one-click Vercel deployment:
+
+- `frontend/vercel.json` pins to the `bom1` (Mumbai) region
+- `frontend/.env.example` documents the required environment variables
+- The OCR API route has a 30-second timeout declared inline
 
 ## Team
 
