@@ -8,3 +8,5 @@ out/
 .env.*.local
 .vercel/
 *.tsbuildinfo
+dev.log
+dev.err.log
