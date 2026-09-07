@@ -10,7 +10,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     seedDemoData();
-    setScans(getAllScans());
+    getAllScans().then(setScans);
   }, []);
 
   const filtered = useMemo(() => {
@@ -28,10 +28,10 @@ export default function ReportsPage() {
     });
   }, [scans, q, filter]);
 
-  function onDelete(id: string) {
+  async function onDelete(id: string) {
     if (!confirm("Delete this scan?")) return;
-    deleteScan(id);
-    setScans(getAllScans());
+    await deleteScan(id);
+    setScans(await getAllScans());
   }
 
   return (

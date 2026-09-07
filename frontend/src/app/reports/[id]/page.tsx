@@ -8,7 +8,13 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
   const [scan, setScan] = useState<ScanRecord | null>(null);
 
   useEffect(() => {
-    setScan(getScanById(params.id));
+    let mounted = true;
+    getScanById(params.id).then((s) => {
+      if (mounted) setScan(s);
+    });
+    return () => {
+      mounted = false;
+    };
   }, [params.id]);
 
   if (!scan) {

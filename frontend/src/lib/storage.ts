@@ -26,9 +26,17 @@ export interface ScanRecord {
   scannedAt: string;
 }
 
+export {
+  saveScanAnywhere as saveScan,
+  getAllScansAnywhere as getAllScans,
+  getScanByIdAnywhere as getScanById,
+  deleteScanAnywhere as deleteScan,
+  isSupabaseConfigured,
+} from "./storage/anywhere";
+
 const KEY = "lm_scans_v1";
 
-export function getAllScans(): ScanRecord[] {
+function localGet(): ScanRecord[] {
   if (typeof window === "undefined") return [];
   try {
     return JSON.parse(localStorage.getItem(KEY) || "[]");
@@ -37,25 +45,13 @@ export function getAllScans(): ScanRecord[] {
   }
 }
 
-export function saveScan(scan: ScanRecord) {
-  const all = getAllScans();
-  all.unshift(scan);
-  localStorage.setItem(KEY, JSON.stringify(all.slice(0, 200)));
-}
-
-export function getScanById(id: string): ScanRecord | null {
-  return getAllScans().find((s) => s.id === id) ?? null;
-}
-
-export function deleteScan(id: string) {
-  const all = getAllScans().filter((s) => s.id !== id);
-  localStorage.setItem(KEY, JSON.stringify(all));
-}
-
+/**
+ * Seed demo data into localStorage on first run so the dashboard has content.
+ * Only runs when localStorage is empty AND Supabase isn't configured (because
+ * remote would have its own demo data path). No-op on the server.
+ */
 export function seedDemoData() {
   if (typeof window === "undefined") return;
-  if (localStorage.getItem(KEY)) return;
-  const now = Date.now();
   const samples: Omit<ScanRecord, "id" | "scannedAt">[] = [
     {
       productName: "Sample Butter Cookies 200g",
@@ -109,6 +105,7 @@ export function seedDemoData() {
       location: "Pune",
     },
   ];
+  const now = Date.now();
   const records = samples.map((s, i) => ({
     ...s,
     id: `seed-${i}`,

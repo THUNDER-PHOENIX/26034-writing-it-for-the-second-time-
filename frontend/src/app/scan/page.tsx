@@ -168,7 +168,7 @@ export default function ScanPage() {
       const fontFindings = analyzeFontSize(words, imageHeight, result_.violations);
 
       const id = `scan-${Date.now()}`;
-      saveScan({
+      await saveScan({
         id,
         productName: productName || "Untitled Product",
         manufacturer: fields.company,
@@ -189,7 +189,7 @@ export default function ScanPage() {
         scannedAt: new Date().toISOString(),
         ocrProvider: provider,
         category: effectiveCategory,
-      } as never);
+      });
       router.push(`/reports/${id}`);
     } catch (e) {
       const msg = (e as Error)?.message || String(e);

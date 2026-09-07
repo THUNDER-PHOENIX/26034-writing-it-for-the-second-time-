@@ -8,7 +8,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     seedDemoData();
-    setScans(getAllScans());
+    getAllScans().then(setScans);
   }, []);
 
   const total = scans.length;
