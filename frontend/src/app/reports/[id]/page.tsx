@@ -27,6 +27,8 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
           <h1 className="text-2xl font-semibold mt-1">{scan.productName}</h1>
           <div className="text-sm text-slate-500">
             Scanned on {new Date(scan.scannedAt).toLocaleString()} • {scan.inspector} • {scan.location}
+            {scan.category && scan.category !== "unknown" && <> • <span className="font-medium capitalize">{scan.category}</span></>}
+            {scan.ocrProvider && <> • OCR: <span className="font-mono text-xs">{scan.ocrProvider}</span></>}
           </div>
         </div>
         <div className="flex gap-2">

@@ -6,6 +6,7 @@ import { runComplianceCheck, extractKeyFields } from "@/lib/rules";
 import { analyzeFontSize } from "@/lib/fontSize";
 import { saveScan } from "@/lib/storage";
 import { preprocessImageForOcr } from "@/lib/image/preprocess";
+import { CATEGORY_OPTIONS, detectCategory, requiredRulesFor, type Category } from "@/lib/rules/categories";
 
 type OcrSource = "server" | "tesseract";
 
@@ -51,6 +52,7 @@ export default function ScanPage() {
   const [productName, setProductName] = useState("");
   const [location, setLocation] = useState("");
   const [inspector, setInspector] = useState("Inspector Demo");
+  const [category, setCategory] = useState<Category>("unknown");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -157,7 +159,12 @@ export default function ScanPage() {
       }
 
       const fields = extractKeyFields(text);
-      const result_ = runComplianceCheck(text);
+      // First pass: run all rules so we can auto-detect category if needed.
+      const firstPass = runComplianceCheck(text);
+      const effectiveCategory: Category = category === "unknown" ? detectCategory(text, firstPass.violations) : category;
+      const required = requiredRulesFor(effectiveCategory);
+      // Final pass: score against the rules actually required for this category.
+      const result_ = runComplianceCheck(text, { requiredRuleIds: required });
       const fontFindings = analyzeFontSize(words, imageHeight, result_.violations);
 
       const id = `scan-${Date.now()}`;
@@ -181,6 +188,7 @@ export default function ScanPage() {
         location: location || "—",
         scannedAt: new Date().toISOString(),
         ocrProvider: provider,
+        category: effectiveCategory,
       } as never);
       router.push(`/reports/${id}`);
     } catch (e) {
@@ -283,6 +291,22 @@ export default function ScanPage() {
                 onChange={(e) => setProductName(e.target.value)}
                 placeholder="e.g. Chips Pack 100g"
               />
+            </Field>
+            <Field label="Product Category">
+              <select
+                className="w-full border rounded-md px-3 py-2"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as Category)}
+              >
+                {CATEGORY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <div className="text-xs text-slate-500 mt-1">
+                {CATEGORY_OPTIONS.find((o) => o.value === category)?.hint}
+              </div>
             </Field>
             <Field label="Inspector">
               <input

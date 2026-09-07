@@ -212,20 +212,28 @@ const RULES: DeclarationRule[] = [
   },
 ];
 
-export function runComplianceCheck(ocrText: string): {
+export function runComplianceCheck(
+  ocrText: string,
+  options?: { requiredRuleIds?: string[] }
+): {
   violations: Violation[];
   score: number;
   compliant: boolean;
   criticalCount: number;
   majorCount: number;
   minorCount: number;
+  requiredRuleIds?: string[];
 } {
   const normalized = ocrText.replace(/\s+/g, " ");
   const violations: Violation[] = [];
   let critical = 0, major = 0, minor = 0;
   let totalWeight = 0, gotWeight = 0;
+  const requiredSet = options?.requiredRuleIds ? new Set(options.requiredRuleIds) : null;
 
   for (const rule of RULES) {
+    // Skip rules not required for the chosen product category.
+    if (requiredSet && !requiredSet.has(rule.id)) continue;
+
     let matched = false;
     let matchedValue: string | undefined;
     for (const p of rule.patterns) {
@@ -276,6 +284,7 @@ export function runComplianceCheck(ocrText: string): {
     criticalCount: critical,
     majorCount: major,
     minorCount: minor,
+    requiredRuleIds: options?.requiredRuleIds,
   };
 }
 
