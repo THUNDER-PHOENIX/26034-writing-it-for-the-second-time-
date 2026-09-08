@@ -32,7 +32,22 @@ function localGet(): ScanRecord[] {
 }
 
 function localSet(scans: ScanRecord[]) {
-  localStorage.setItem(KEY, JSON.stringify(scans.slice(0, 200)));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(scans.slice(0, 200)));
+  } catch (error) {
+    // Camera photos are often several megabytes, while mobile browsers usually
+    // allow only about 5 MB for localStorage. The scan result is more important
+    // than retaining a duplicate of the photo, so retry with metadata only.
+    // Remote storage still keeps the image whenever Supabase is available.
+    const metadataOnly = scans.map((scan) => ({ ...scan, imageDataUrl: null }));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(metadataOnly.slice(0, 200)));
+    } catch (retryError) {
+      console.error("Unable to save scan metadata locally:", retryError);
+      throw new Error("Your browser storage is full. Clear old scans and try again.");
+    }
+    console.warn("Local storage quota reached; saved scan details without the captured image.", error);
+  }
 }
 
 export async function saveScanAnywhere(s: ScanRecord): Promise<ScanRecord> {
