@@ -112,8 +112,9 @@ export async function saveScanRemote(s: ScanRecord): Promise<ScanRecord> {
   const row = scanToRow({ ...s, imagePath });
   const { error } = await client.from("scans").upsert(row);
   if (error) {
-    console.warn("Supabase save failed:", error.message);
-    return s;
+    // Let the storage dispatcher persist locally. Returning success here
+    // caused the caller to navigate to a report which did not exist anywhere.
+    throw new Error(`Supabase save failed: ${error.message}`);
   }
   return { ...s, imagePath };
 }

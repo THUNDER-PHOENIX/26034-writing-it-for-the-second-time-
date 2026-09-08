@@ -52,6 +52,10 @@ function localGet(): ScanRecord[] {
  */
 export function seedDemoData() {
   if (typeof window === "undefined") return;
+  // Never replace real scans. This function is called when the dashboard and
+  // reports pages mount, so overwriting an existing collection here made a
+  // newly-created scan disappear before its detail page could load.
+  if (localGet().length > 0) return;
   const samples: Omit<ScanRecord, "id" | "scannedAt">[] = [
     {
       productName: "Sample Butter Cookies 200g",

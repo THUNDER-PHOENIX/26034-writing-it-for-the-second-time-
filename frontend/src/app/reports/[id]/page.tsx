@@ -6,16 +6,26 @@ import { generateReportPdf } from "@/lib/pdf";
 
 export default function ReportDetail({ params }: { params: { id: string } }) {
   const [scan, setScan] = useState<ScanRecord | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     getScanById(params.id).then((s) => {
-      if (mounted) setScan(s);
+      if (mounted) {
+        setScan(s);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (mounted) setLoading(false);
     });
     return () => {
       mounted = false;
     };
   }, [params.id]);
+
+  if (loading) {
+    return <div className="card p-6 text-center text-slate-500">Loading scan…</div>;
+  }
 
   if (!scan) {
     return (
