@@ -1,26 +1,15 @@
 "use client";
-import { Jimp } from "jimp";
 
 /**
- * Image preprocessing for OCR accuracy.
+ * High-performance browser-native image preprocessing for OCR accuracy.
  *
- * Real-world product photos are usually:
- *   - high resolution (5+ MP from a phone), which slows OCR and adds noise
- *   - have shadows / uneven lighting
- *   - have slight perspective skew (label is rarely perfectly flat to the camera)
- *   - have glare spots on glossy labels
- *
- * This pipeline:
- *   1. Auto-rotates from EXIF (most cameras tag orientation)
- *   2. Resizes so the longest side is <= 1600px (best speed/accuracy tradeoff
- *      for both OCR.space and Tesseract.js)
- *   3. Converts to grayscale (text is monochrome; removes color noise)
- *   4. Normalizes histogram contrast (stretches dark/light range, fixes shadows)
- *   5. Light unsharp mask (sharpens text edges after smoothing)
- *
- * Returns a JPEG dataURL (smallest size for upload) and a `preprocessed` flag
- * so the caller knows whether preprocessing was skipped.
+ * Uses HTML5 Canvas API (no Node.js dependencies/Buffers) to perform:
+ * 1. Resizing to optimal OCR resolution (max dimension 1600px)
+ * 2. Grayscale conversion (standard luminance weighting)
+ * 3. Histogram contrast stretching (normalizes shadows & lighting)
+ * 4. Crisp 3x3 unsharp convolution filter (sharpens text edges)
  */
+
 export interface PreprocessResult {
   dataUrl: string;
   mimeType: "image/jpeg";
@@ -31,74 +20,140 @@ export interface PreprocessResult {
 }
 
 const MAX_SIDE = 1600;
-const JPEG_QUALITY = 88;
+const JPEG_QUALITY = 0.92;
 
 export async function preprocessImageForOcr(input: string | Blob): Promise<PreprocessResult> {
-  let jimp: Awaited<ReturnType<typeof Jimp.read>>;
+  let imgUrl: string;
+  let isTempUrl = false;
+
   if (typeof input === "string") {
-    // data URL or http URL
-    if (input.startsWith("data:")) {
-      const base64 = input.replace(/^data:[^;]+;base64,/, "");
-      const buf = Buffer.from(base64, "base64");
-      jimp = await Jimp.read(buf);
-    } else {
-      jimp = await Jimp.read(input);
-    }
+    imgUrl = input;
   } else {
-    const buf = Buffer.from(await input.arrayBuffer());
-    jimp = await Jimp.read(buf);
+    imgUrl = URL.createObjectURL(input);
+    isTempUrl = true;
   }
 
-  const origW = jimp.width;
-  const origH = jimp.height;
-  let didPreprocess = false;
-
-  // 1. Resize so longest side <= MAX_SIDE. Skip if already smaller.
-  if (Math.max(origW, origH) > MAX_SIDE) {
-    if (origW >= origH) {
-      jimp.resize({ w: MAX_SIDE });
-    } else {
-      jimp.resize({ h: MAX_SIDE });
-    }
-    didPreprocess = true;
-  }
-
-  // 2. Greyscale.
-  jimp.greyscale();
-  didPreprocess = true;
-
-  // 3. Normalize histogram contrast.
-  jimp.normalize();
-
-  // 4. Mild unsharp mask to crisp up text after the histogram stretch.
-  //    Kernel sharpens the center using a 3x3 with -1/4 on diagonals and +1
-  //    on center, divided by a small weight to keep it from amplifying noise.
   try {
-    jimp.convolute([
-      [0, -1, 0],
-      [-1, 5, -1],
-      [0, -1, 0],
-    ]);
-  } catch {
-    // Some Jimp builds reject custom kernels; ignore.
+    const img = await loadImage(imgUrl);
+    const origW = img.naturalWidth || img.width;
+    const origH = img.naturalHeight || img.height;
+
+    // Calculate new dimensions (scale down if > MAX_SIDE)
+    let newW = origW;
+    let newH = origH;
+    if (Math.max(origW, origH) > MAX_SIDE) {
+      if (origW >= origH) {
+        newW = MAX_SIDE;
+        newH = Math.round((origH * MAX_SIDE) / origW);
+      } else {
+        newH = MAX_SIDE;
+        newW = Math.round((origW * MAX_SIDE) / origH);
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = newW;
+    canvas.height = newH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Could not get 2D canvas context");
+    }
+
+    // Draw and resize
+    ctx.drawImage(img, 0, 0, newW, newH);
+
+    // Get pixel data for processing
+    const imageData = ctx.getImageData(0, 0, newW, newH);
+    const data = imageData.data;
+    const len = data.length;
+
+    // Step 1: Grayscale & find min/max luminance for contrast stretch
+    let minLum = 255;
+    let maxLum = 0;
+    const lums = new Uint8Array(newW * newH);
+
+    for (let i = 0, p = 0; i < len; i += 4, p++) {
+      // Standard ITU-R BT.601 luminance
+      const lum = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      lums[p] = lum;
+      if (lum < minLum) minLum = lum;
+      if (lum > maxLum) maxLum = lum;
+    }
+
+    // Step 2: Apply contrast stretch
+    const range = maxLum - minLum || 1;
+    for (let i = 0, p = 0; i < len; i += 4, p++) {
+      const stretched = Math.min(255, Math.max(0, Math.round(((lums[p] - minLum) * 255) / range)));
+      data[i] = stretched;     // R
+      data[i + 1] = stretched; // G
+      data[i + 2] = stretched; // B
+      // Alpha remains unchanged
+    }
+
+    // Put stretched grayscale image back
+    ctx.putImageData(imageData, 0, 0);
+
+    // Step 3: Fast 3x3 sharpening (unsharp mask)
+    try {
+      const sharpImageData = ctx.getImageData(0, 0, newW, newH);
+      const sharpData = sharpImageData.data;
+      const copy = new Uint8ClampedArray(data);
+
+      for (let y = 1; y < newH - 1; y++) {
+        for (let x = 1; x < newW - 1; x++) {
+          const idx = (y * newW + x) * 4;
+          // Kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
+          const top = ((y - 1) * newW + x) * 4;
+          const bottom = ((y + 1) * newW + x) * 4;
+          const left = (y * newW + (x - 1)) * 4;
+          const right = (y * newW + (x + 1)) * 4;
+
+          const val =
+            5 * copy[idx] -
+            copy[top] -
+            copy[bottom] -
+            copy[left] -
+            copy[right];
+
+          const clamped = val < 0 ? 0 : val > 255 ? 255 : val;
+          sharpData[idx] = clamped;
+          sharpData[idx + 1] = clamped;
+          sharpData[idx + 2] = clamped;
+        }
+      }
+      ctx.putImageData(sharpImageData, 0, 0);
+    } catch {
+      // If sharpening fails, keep contrast stretched version
+    }
+
+    const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+    const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
+
+    return {
+      dataUrl,
+      mimeType: "image/jpeg",
+      preprocessed: true,
+      originalSize: { w: origW, h: origH },
+      newSize: { w: newW, h: newH },
+      base64,
+    };
+  } finally {
+    if (isTempUrl) {
+      URL.revokeObjectURL(imgUrl);
+    }
   }
-
-  const out = await jimp.getBuffer("image/jpeg", { quality: JPEG_QUALITY });
-  const base64 = Buffer.from(out).toString("base64");
-
-  return {
-    dataUrl: `data:image/jpeg;base64,${base64}`,
-    mimeType: "image/jpeg",
-    preprocessed: didPreprocess,
-    originalSize: { w: origW, h: origH },
-    newSize: { w: jimp.width, h: jimp.height },
-    base64,
-  };
 }
 
-/**
- * Convenience: extract just the base64 of a data URL, for the /api/ocr POST body.
- */
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(new Error("Failed to load image for preprocessing: " + String(e)));
+    img.src = src;
+  });
+}
+
 export function dataUrlToBase64(dataUrl: string): string {
   return dataUrl.replace(/^data:[^;]+;base64,/, "");
 }

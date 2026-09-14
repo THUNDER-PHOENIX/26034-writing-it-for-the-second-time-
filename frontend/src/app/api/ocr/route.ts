@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOcrSpaceProvider } from "@/lib/ocr/ocrspace";
-import { enhancedPreprocessImageForOcr } from "@/lib/image/enhancedPreprocess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// OCR.space can take a few seconds on cold start; allow up to 60s.
+// OCR.space can take a few seconds on cold start; allow up to 60s for better reliability.
 export const maxDuration = 60;
 
 interface OcrRequestBody {
@@ -12,8 +11,6 @@ interface OcrRequestBody {
   imageBase64: string;
   /** MIME type, e.g. "image/jpeg" or "image/png" */
   mimeType?: string;
-  /** Optional preprocessing hint */
-  preprocess?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -49,46 +46,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let imageDataUrl = `data:${body.mimeType || "image/jpeg"};base64,${body.imageBase64}`;
-
-    // Enhanced preprocessing for better OCR accuracy
-    if (body.preprocess !== false) {
-      try {
-        const preResult = await enhancedPreprocessImageForOcr(imageDataUrl);
-        imageDataUrl = preResult.dataUrl;
-      } catch (preErr) {
-        console.warn("Enhanced preprocessing failed, falling back to original:", preErr);
-      }
-    }
-
-    const base64 = imageDataUrl.replace(/^data:[^;]+;base64,/, "");
-
     const provider = createOcrSpaceProvider(apiKey);
     const result = await provider.recognize({
       kind: "base64",
-      data: base64,
-      mimeType: "image/jpeg",
+      data: body.imageBase64,
+      mimeType: body.mimeType || "image/jpeg",
     });
-
-    return NextResponse.json({
-      configured: true,
-      ...result,
-      preprocessing: body.preprocess !== false,
-      // Add metadata for debugging and analytics
-      processed: imageDataUrl !== `data:${body.mimeType || "image/jpeg"};base64,${body.imageBase64}`
-    });
+    return NextResponse.json({ configured: true, ...result });
   } catch (err) {
     const message = (err as Error)?.message || "OCR failed";
     console.error("OCR processing error:", err);
-    return NextResponse.json(
-      {
-        error: message,
-        configured: true,
-        fallback: true,
-        suggestion: "Try preprocessing the image (remove shadows, glare, ensure good lighting)"
-      },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: message, configured: true }, { status: 502 });
   }
 }
 
@@ -96,14 +64,6 @@ export async function GET() {
   return NextResponse.json({
     configured: Boolean(process.env.OCR_SPACE_API_KEY),
     provider: "ocrspace",
-    enhancedPreprocessing: true,
-    maxDuration: maxDuration,
-    capabilities: [
-      "server-side-ocr",
-      "enhanced-preprocessing",
-      "barcode-detection",
-      "text-extraction",
-      "language-support"
-    ]
+    maxDuration: 60,
   });
 }

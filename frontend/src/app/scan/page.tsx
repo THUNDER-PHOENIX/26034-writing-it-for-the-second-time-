@@ -5,13 +5,13 @@ import Tesseract from "tesseract.js";
 import { runComplianceCheck, extractKeyFields } from "@/lib/rules";
 import { analyzeFontSize } from "@/lib/fontSize";
 import { saveScan } from "@/lib/storage";
-import { preprocessImageForOcr, enhancedPreprocessImageForOcr } from "@/lib/image/enhancedPreprocess";
+import { preprocessImageForOcr } from "@/lib/image/preprocess";
 import { CATEGORY_OPTIONS, detectCategory, requiredRulesFor, type Category } from "@/lib/rules/categories";
 import { decodeBarcodeFromDataUrl } from "@/lib/barcode/zxing";
 
 type OcrSource = "server" | "tesseract";
 
-async function recognizeOnServer(imageDataUrl: string, preprocess?: boolean): Promise<{
+async function recognizeOnServer(imageDataUrl: string): Promise<{
   text: string;
   words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[];
   source: OcrSource;
@@ -19,19 +19,14 @@ async function recognizeOnServer(imageDataUrl: string, preprocess?: boolean): Pr
 }> {
   const base64 = imageDataUrl.replace(/^data:[^;]+;base64,/, "");
   const mime = (imageDataUrl.match(/^data:([^;]+);/) || [, "image/jpeg"])[1];
-  const body = {
-    imageBase64: base64,
-    mimeType: mime,
-    preprocess,
-  };
   const resp = await fetch("/api/ocr", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ imageBase64: base64, mimeType: mime }),
   });
   if (!resp.ok) {
-    const responseBody = await resp.json().catch(() => ({}));
-    throw new Error(`Server OCR unavailable: ${responseBody?.error || resp.statusText}`);
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(`Server OCR unavailable: ${body?.error || resp.statusText}`);
   }
   const json = await resp.json();
   if (!json?.text) throw new Error("Server OCR returned empty result");
@@ -117,7 +112,7 @@ export default function ScanPage() {
     if (!imageDataUrl) return;
     setRunning(true);
     setProgress(0);
-    setStatus("Enhanced preprocessing image…");
+    setStatus("Preprocessing image for OCR…");
 
     let text = "";
     let words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[] = [];
@@ -125,8 +120,6 @@ export default function ScanPage() {
     let provider: OcrSource = "tesseract";
     let processedDataUrl = imageDataUrl;
     let barcodeValue: string | null = null;
-    let preprocessingSuccess = false;
-    let enhancedPreprocessing = false;
 
     try {
       // 0. Try to read a barcode from the original image (ZXing is faster
@@ -142,93 +135,42 @@ export default function ScanPage() {
         console.warn("Barcode scan failed:", e);
       }
 
-      // 1. Enhanced preprocessing for OCR (advanced preprocessing pipeline)
+      // 1. Preprocess for OCR (grayscale, contrast stretch, mild sharpen, resize).
       try {
-        // Try enhanced preprocessing first (smart selector)
-        try {
-          const enhanced = await enhancedPreprocessImageForOcr(imageDataUrl);
-          processedDataUrl = enhanced.dataUrl;
-          enhancedPreprocessing = true;
-          setStatus(`Enhanced preprocessing: ${enhanced.newSize.w}x${enhanced.newSize.h} (OCR confidence boost: ${enhanced.ocrConfidenceBoost}%)`);
-          preprocessingSuccess = true;
-        } catch (enhancedErr) {
-          // Fall back to standard preprocessing
-          const pre = await preprocessImageForOcr(imageDataUrl);
-          processedDataUrl = pre.dataUrl;
-          setStatus(`Standard preprocessing: ${pre.newSize.w}x${pre.newSize.h}`);
-          preprocessingSuccess = true;
-        }
+        const pre = await preprocessImageForOcr(imageDataUrl);
+        processedDataUrl = pre.dataUrl;
+        setStatus(`Preprocessed ${pre.originalSize.w}x${pre.originalSize.h} → ${pre.newSize.w}x${pre.newSize.h}`);
       } catch (e) {
-        console.warn("All preprocessing failed, using original image:", e);
+        console.warn("Preprocessing failed, using original image:", e);
         setStatus("Preprocessing skipped, using original image");
       }
 
-      // 2. Try server (cloud) OCR first with enhanced preprocessing if available
+      // 2. Try server (cloud) OCR first.
       try {
-        setStatus("Calling server OCR with enhanced preprocessing…");
-        const server = await recognizeOnServer(processedDataUrl, {
-          preprocess: enhancedPreprocessing,
-        });
+        setStatus("Calling server OCR…");
+        const server = await recognizeOnServer(processedDataUrl);
         text = server.text;
         words = server.words;
         provider = "server";
         if (words.length > 0) {
           imageHeight = Math.max(...words.map((w) => w.bbox.y1), 1000);
         }
-        const wordCount = words.length;
-        setStatus(`Enhanced Server OCR (${wordCount} words)${enhancedPreprocessing ? " with preprocessing" : ""}`);
+        setStatus(`Server OCR (${words.length} words)`);
       } catch (serverErr) {
-        console.warn("Enhanced Server OCR failed, falling back to standard OCR:", serverErr);
-        setStatus("Server OCR unavailable, using local OCR…");
-
-        // Try with enhanced preprocessing for Tesseract as well
-        if (enhancedPreprocessing) {
-          setStatus("Trying Tesseract with enhanced preprocessing…");
-          try {
-            const fallback = await recognizeOnClient(processedDataUrl, (status, pct) => {
-              setStatus(status);
-              setProgress(pct);
-            });
-            text = fallback.data?.text || "";
-            words = (fallback.data?.words || []).map((w) => ({
-              text: w.text,
-              bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
-              confidence: w.confidence,
-            }));
-            imageHeight = (fallback.data as { imageHeight?: number })?.imageHeight ?? Math.max(...words.map((w) => w.bbox.y1), 1000);
-            provider = "tesseract";
-          } catch (tesseractErr) {
-            console.error("Enhanced Tesseract also failed:", tesseractErr);
-            setStatus("Local OCR failed, trying original image…");
-            // Final fallback to original image
-            const fallback = await recognizeOnClient(imageDataUrl, (status, pct) => {
-              setStatus(status);
-              setProgress(pct);
-            });
-            text = fallback.data?.text || "";
-            words = (fallback.data?.words || []).map((w) => ({
-              text: w.text,
-              bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
-              confidence: w.confidence,
-            }));
-            imageHeight = (fallback.data as { imageHeight?: number })?.imageHeight ?? Math.max(...words.map((w) => w.bbox.y1), 1000);
-            provider = "tesseract";
-          }
-        } else {
-          // Standard Tesseract fallback
-          const fallback = await recognizeOnClient(processedDataUrl, (status, pct) => {
-            setStatus(status);
-            setProgress(pct);
-          });
-          text = fallback.data?.text || "";
-          words = (fallback.data?.words || []).map((w) => ({
-            text: w.text,
-            bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
-            confidence: w.confidence,
-          }));
-          imageHeight = (fallback.data as { imageHeight?: number })?.imageHeight ?? Math.max(...words.map((w) => w.bbox.y1), 1000);
-          provider = "tesseract";
-        }
+        console.warn("Server OCR failed, falling back to in-browser Tesseract:", serverErr);
+        setStatus("Running in-browser OCR (Tesseract.js)…");
+        const fallback = await recognizeOnClient(processedDataUrl, (statusMsg, pct) => {
+          setStatus(statusMsg);
+          setProgress(pct);
+        });
+        text = fallback.data?.text || "";
+        words = (fallback.data?.words || []).map((w) => ({
+          text: w.text,
+          bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
+          confidence: w.confidence,
+        }));
+        imageHeight = (fallback.data as { imageHeight?: number })?.imageHeight ?? Math.max(...words.map((w) => w.bbox.y1), 1000);
+        provider = "tesseract";
       }
 
       const fields = extractKeyFields(text);
