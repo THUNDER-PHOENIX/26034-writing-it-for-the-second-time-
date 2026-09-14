@@ -81,6 +81,14 @@ const RULES: DeclarationRule[] = [
       new RegExp(String.raw`\b${MRP_HEAD}${MRP_PRICE_TAIL}`, "i"),
       /₹\s*([0-9]+(?:[.,][0-9]{1,2})?)/,
       /\bprice\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i,
+      // Enhanced: Catch "Rs 120", "Rs.120", "INR 120", "120 Rs"
+      /\brs\.?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i,
+      /\b([0-9]+(?:[.,][0-9]{1,2})?)\s*rs\.?\b/i,
+      /\binr\s*([0-9]+(?:[.,][0-9]{1,2})?)/i,
+      // Catch standalone prices near common price indicators
+      /\b(?:price|cost|amount)\D{0,10}([0-9]{2,4}(?:[.,][0-9]{1,2})?)\b/i,
+      // Catch MRP with extra spaces/punctuation
+      /\bm\s*[.\s]*r\s*[.\s]*p\s*[:\-.\s]*([0-9]+(?:[.,][0-9]{1,2})?)/i,
     ],
     severity: "critical",
   },
