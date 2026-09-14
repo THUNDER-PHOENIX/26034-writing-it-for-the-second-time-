@@ -24,6 +24,15 @@ export interface ScanRecord {
   inspector: string;
   location: string;
   scannedAt: string;
+  // Enhanced fields for compliance tracking
+  department?: string;
+  inspectorId?: string;
+  complianceNotes?: string;
+  actionTaken?: "warning" | "fine" | "seizure" | "none";
+  fineAmount?: number;
+  followUpDate?: string;
+  evidencePhotos?: string[];
+  reportStatus?: "draft" | "submitted" | "approved" | "closed";
 }
 
 export {
