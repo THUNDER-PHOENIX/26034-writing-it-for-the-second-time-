@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Logo } from "@/components/Logo";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -47,7 +48,7 @@ export default function SignupPage() {
         department: formData.department,
         state: formData.state,
       }));
-      router.push("/");
+      router.push("/scan");
       setLoading(false);
     }, 1000);
   }
@@ -56,11 +57,9 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
       <div className="w-full max-w-2xl">
         {/* Logo & Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 text-white font-bold text-2xl shadow-lg mb-4">
-            LM
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">Create Inspector Account</h1>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <Logo size={68} />
+          <h1 className="text-2xl font-bold text-slate-800 mt-3">Create Inspector Account</h1>
           <p className="text-slate-600 text-sm mt-1">Legal Metrology Enforcement Portal</p>
         </div>
 

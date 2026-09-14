@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Logo } from "@/components/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function LoginPage() {
     setTimeout(() => {
       if (email && password) {
         localStorage.setItem("lm_user", JSON.stringify({ email, role: "inspector" }));
-        router.push("/");
+        router.push("/scan");
       } else {
         setError("Please enter valid credentials");
       }
@@ -31,11 +32,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4">
       <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 text-white font-bold text-2xl shadow-lg mb-4">
-            LM
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">Legal Metrology Portal</h1>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <Logo size={68} />
+          <h1 className="text-2xl font-bold text-slate-800 mt-3">Legal Metrology Portal</h1>
           <p className="text-slate-600 text-sm mt-1">Packaged Commodities Compliance System</p>
         </div>
 

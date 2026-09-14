@@ -283,7 +283,9 @@ export function runComplianceCheck(
   }
 
   const score = totalWeight === 0 ? 0 : Math.round((gotWeight / totalWeight) * 100);
-  const compliant = critical === 0 && major === 0;
+  // Compliant if: (1) zero critical violations, AND (2) score >= 70%, AND (3) major violations <= 1
+  // This allows minor flexibility while maintaining legal metrology standards
+  const compliant = critical === 0 && major <= 1 && score >= 70;
 
   return {
     violations,

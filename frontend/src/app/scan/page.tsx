@@ -60,6 +60,22 @@ export default function ScanPage() {
   const [ocrEngine, setOcrEngine] = useState<"server" | "client" | "unknown">("unknown");
 
   useEffect(() => {
+    // Auto-populate inspector details from logged-in user
+    const storedUser = localStorage.getItem("lm_user");
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setInspector(user.name || user.email.split("@")[0]);
+        if (user.state) {
+          setLocation(user.state);
+        }
+      } catch (e) {
+        console.error("Failed to parse user", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     // Probe /api/ocr to show which engine will be used.
     fetch("/api/ocr")
       .then((r) => r.json())

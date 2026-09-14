@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Logo } from "./Logo";
 
 export function Header() {
   const pathname = usePathname();
@@ -56,9 +57,7 @@ export function Header() {
       {/* Main Navigation */}
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 grid place-items-center text-white font-bold text-lg shadow-md group-hover:shadow-lg transition-all">
-            LM
-          </div>
+          <Logo size={48} />
           <div>
             <div className="font-bold text-slate-900 text-base leading-tight group-hover:text-blue-600 transition-colors">
               Legal Metrology Compliance Portal
