@@ -7,6 +7,7 @@ import { Logo } from "./Logo";
 export function Header() {
   const pathname = usePathname();
   const [user, setUser] = useState<{ email: string; name?: string; role?: string } | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
     // Check if user is logged in
@@ -18,6 +19,18 @@ export function Header() {
         console.error("Failed to parse user", e);
       }
     }
+
+    // Monitor online/offline status
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   function handleLogout() {
@@ -30,6 +43,7 @@ export function Header() {
     { href: "/", label: "Dashboard", icon: "📊" },
     { href: "/scan", label: "Scan Product", icon: "📷" },
     { href: "/reports", label: "Reports", icon: "📋" },
+    { href: "/analytics", label: "Analytics", icon: "📈" },
     { href: "/about", label: "About & Rules", icon: "ℹ️" },
   ];
 
@@ -46,6 +60,13 @@ export function Header() {
             <span className="text-blue-200 hidden sm:inline">Legal Metrology Division</span>
           </div>
           <div className="flex items-center gap-4 text-blue-100 text-xs">
+            {/* Real-time sync status indicator */}
+            <div className="flex items-center gap-1.5 bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-400/20">
+              <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+              <span className="text-[11px] font-medium text-blue-100">
+                {isOnline ? "Field Online (Synced)" : "Offline Mode (Local Storage)"}
+              </span>
+            </div>
             <span className="hidden md:inline">Toll Free: 1800-11-4000</span>
             <span className="bg-blue-800 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
               SIH 2026 • PS 26034

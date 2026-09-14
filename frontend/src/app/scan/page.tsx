@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
 import { runComplianceCheck, extractKeyFields } from "@/lib/rules";
 import { analyzeFontSize } from "@/lib/fontSize";
-import { saveScan } from "@/lib/storage";
+import { saveScan, getAllScans } from "@/lib/storage";
 import { preprocessImageForOcr } from "@/lib/image/preprocess";
+import { analyzeImageQuality, type ImageQualityReport } from "@/lib/image/quality";
 import { CATEGORY_OPTIONS, detectCategory, requiredRulesFor, type Category } from "@/lib/rules/categories";
 import { decodeBarcodeFromDataUrl } from "@/lib/barcode/zxing";
 
@@ -54,6 +55,9 @@ export default function ScanPage() {
   const [location, setLocation] = useState("");
   const [inspector, setInspector] = useState("Inspector Demo");
   const [category, setCategory] = useState<Category>("unknown");
+  const [ocrLanguage, setOcrLanguage] = useState<"eng" | "hin" | "kan">("eng");
+  const [qualityReport, setQualityReport] = useState<ImageQualityReport | null>(null);
+  const [barcodeHistory, setBarcodeHistory] = useState<{ count: number; lastDate: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -94,7 +98,18 @@ export default function ScanPage() {
     const f = e.target.files?.[0];
     if (!f) return;
     const reader = new FileReader();
-    reader.onload = () => setImageDataUrl(reader.result as string);
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      setImageDataUrl(dataUrl);
+      // Analyze image quality immediately
+      try {
+        const quality = await analyzeImageQuality(dataUrl);
+        setQualityReport(quality);
+      } catch (err) {
+        console.error("Quality analysis failed:", err);
+        setQualityReport(null);
+      }
+    };
     reader.readAsDataURL(f);
   }
 
@@ -111,17 +126,27 @@ export default function ScanPage() {
     }
   }
 
-  function capture() {
+  async function capture() {
     const v = videoRef.current;
     if (!v) return;
     const canvas = document.createElement("canvas");
     canvas.width = v.videoWidth;
     canvas.height = v.videoHeight;
     canvas.getContext("2d")?.drawImage(v, 0, 0);
-    setImageDataUrl(canvas.toDataURL("image/png"));
+    const dataUrl = canvas.toDataURL("image/png");
+    setImageDataUrl(dataUrl);
     const stream = v.srcObject as MediaStream | null;
     stream?.getTracks().forEach((t) => t.stop());
     setCameraOn(false);
+
+    // Analyze image quality
+    try {
+      const quality = await analyzeImageQuality(dataUrl);
+      setQualityReport(quality);
+    } catch (err) {
+      console.error("Quality analysis failed:", err);
+      setQualityReport(null);
+    }
   }
 
   async function runOcr() {
@@ -245,6 +270,7 @@ export default function ScanPage() {
     const sample = makeSampleImage();
     setImageDataUrl(sample);
     setProductName("Sample Chips Pack 100g");
+    analyzeImageQuality(sample).then(setQualityReport).catch(() => setQualityReport(null));
   }
 
   return (
@@ -300,6 +326,56 @@ export default function ScanPage() {
           {imageDataUrl && (
             <div className="space-y-3">
               <img src={imageDataUrl} alt="Captured" className="w-full rounded-lg border" />
+
+              {/* Image Quality Assessment Card */}
+              {qualityReport && (
+                <div className={`p-3 rounded-lg border-2 ${
+                  qualityReport.isAcceptable
+                    ? "bg-emerald-50 border-emerald-200"
+                    : "bg-amber-50 border-amber-300"
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-800">
+                        {qualityReport.isAcceptable ? "✓ Image Quality: Good" : "⚠️ Image Quality Issues"}
+                      </span>
+                      <span className="badge badge-blue text-xs">{qualityReport.score}/100</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                    <div className={`px-2 py-1 rounded ${
+                      qualityReport.sharpness.status === "sharp" ? "bg-emerald-100 text-emerald-800" :
+                      qualityReport.sharpness.status === "fair" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"
+                    }`}>
+                      <div className="font-semibold">Sharpness</div>
+                      <div className="capitalize">{qualityReport.sharpness.status}</div>
+                    </div>
+                    <div className={`px-2 py-1 rounded ${
+                      qualityReport.brightness.status === "good" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                    }`}>
+                      <div className="font-semibold">Lighting</div>
+                      <div className="capitalize">{qualityReport.brightness.status}</div>
+                    </div>
+                    <div className={`px-2 py-1 rounded ${
+                      qualityReport.resolution.status === "good" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                    }`}>
+                      <div className="font-semibold">Resolution</div>
+                      <div>{qualityReport.resolution.w}×{qualityReport.resolution.h}</div>
+                    </div>
+                  </div>
+                  {qualityReport.warnings.length > 0 && (
+                    <div className="space-y-1">
+                      {qualityReport.warnings.map((w, i) => (
+                        <div key={i} className="text-xs text-amber-800 flex items-start gap-1">
+                          <span>•</span>
+                          <span>{w}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={runOcr}
@@ -308,7 +384,7 @@ export default function ScanPage() {
                 >
                   {running ? `Running OCR… ${progress}%` : "Run Compliance Check"}
                 </button>
-                <button onClick={() => setImageDataUrl(null)} className="btn-secondary" disabled={running}>
+                <button onClick={() => { setImageDataUrl(null); setQualityReport(null); }} className="btn-secondary" disabled={running}>
                   Retake
                 </button>
               </div>
@@ -347,6 +423,20 @@ export default function ScanPage() {
               </select>
               <div className="text-xs text-slate-500 mt-1">
                 {CATEGORY_OPTIONS.find((o) => o.value === category)?.hint}
+              </div>
+            </Field>
+            <Field label="OCR Language Support">
+              <select
+                className="w-full border rounded-md px-3 py-2"
+                value={ocrLanguage}
+                onChange={(e) => setOcrLanguage(e.target.value as "eng" | "hin" | "kan")}
+              >
+                <option value="eng">English (Standard Declarations)</option>
+                <option value="hin">Hindi (हिंदी - Multilingual)</option>
+                <option value="kan">Kannada (ಕನ್ನಡ - Karnataka Zone)</option>
+              </select>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Dual-language validation under Legal Metrology Rule 9
               </div>
             </Field>
             <Field label="Inspector">
