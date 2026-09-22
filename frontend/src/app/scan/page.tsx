@@ -49,7 +49,6 @@ async function recognizeOnClient(imageDataUrl: string, onProgress?: (status: str
       // Tesseract.js accepts raw Tesseract configuration parameters as extra keys.
       // @ts-expect-error
       tessedit_pageseg_mode: psm,
-      // @ts-expect-error
       tessedit_char_whitelist: "",
       // @ts-expect-error
       preserve_interword_spaces: "1",
