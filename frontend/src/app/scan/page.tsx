@@ -50,7 +50,7 @@ async function recognizeOnClient(imageDataUrl: string, onProgress?: (status: str
       tessedit_pageseg_mode: psm,
       tessedit_char_whitelist: "",
       preserve_interword_spaces: "1",
-    });
+    } as any);
 
   let result = await tryRecognize("6");
   // If PSM 6 produced no text, fall back to default auto-layout (PSM 3).
