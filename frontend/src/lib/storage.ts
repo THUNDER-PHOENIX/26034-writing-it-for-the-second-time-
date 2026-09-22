@@ -37,6 +37,7 @@ export interface ScanRecord {
 
 export {
   saveScanAnywhere as saveScan,
+  updateScanAnywhere as updateScan,
   getAllScansAnywhere as getAllScans,
   getScanByIdAnywhere as getScanById,
   deleteScanAnywhere as deleteScan,

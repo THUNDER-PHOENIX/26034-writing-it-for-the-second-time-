@@ -99,8 +99,13 @@ const RULES: DeclarationRule[] = [
       "Month and year of manufacture or packing or import must be declared.",
     ruleRef: "Rule 6(1)(d)",
     patterns: [
+      // MFG date tokens (allowing noisy separators)
       new RegExp(
-        String.raw`\b(?:mfg\.?|mfd\.?|mfg\.?\s*date|mfd\.?\s*date|manufactured\s*on|packed\s*on|manufacturing\s*date|date\s*of\s*(?:mfg|mfd|manufacture|packing|packaging|import))\b\s*[:\-]?\s*${DATE_TOKEN}`,
+        String.raw`\b(?:mfd\.?|mfg\.?)\b[^\n]{0,50}?(?:\s*[:\-]?\s*)([0-9]{1,2})\s*[-/]\s*([A-Za-z]{3})\s*[-/]\s*([0-9]{2,4})`,
+        "i"
+      ),
+      new RegExp(
+        String.raw`\b(?:mfd\.?|mfg\.?)\b\s*[:\-]?\s*${DATE_TOKEN}`,
         "i"
       ),
       /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?[\s\-\.,]+([0-9]{2,4})\b/i,
@@ -220,6 +225,37 @@ const RULES: DeclarationRule[] = [
   },
 ];
 
+/**
+ * Normalize OCR output for compliance rule matching.
+ *
+ * IMPORTANT: Global letter→digit substitution (O→0, I→1, etc.) is intentionally
+ * avoided here because it destroys word-based patterns (INDIA→1ND1A, LIMITED→L1M1TED,
+ * Ingredients→1ngred1ents). Instead we apply only safe, context-aware repairs:
+ *
+ *  1. Collapse all whitespace runs to a single space.
+ *  2. Fix common OCR noise for the Indian Rupee symbol (₹ is often misread).
+ *  3. In strictly numeric contexts (a digit, then an ambiguous char, then a digit),
+ *     replace O→0 and l/I→1 so "2O24" → "2024" and "l00" → "100".
+ *  4. Remove stray vertical-bar characters that appear from metallic-foil scans.
+ */
+export function normalizeOcrText(text: string): string {
+  return text
+    // 1. Collapse whitespace
+    .replace(/\s+/g, " ")
+    // 2. Indian Rupee OCR noise (Rs, R$, INR with noise, etc. — leave Rs. alone)
+    .replace(/[Rr][Ss]\s*\.\s*/g, "Rs. ")
+    // 3. Numeric-context letter repairs only:
+    //    Replace O/Q → 0 when sandwiched between digits or at start of a digit run
+    .replace(/(?<=\d)[OoQq](?=\d)/g, "0")
+    //    Replace I/l → 1 when sandwiched between digits
+    .replace(/(?<=\d)[Il](?=\d)/g, "1")
+    //    Leading O in otherwise all-digit-or-slash strings like "O6/2024"
+    .replace(/\b[Oo]([0-9]{1,2}[\/\-\.][0-9]{2,4})\b/g, "0$1")
+    // 4. Remove stray pipe/vertical-bar characters from foil scan artifacts
+    .replace(/\|/g, " ")
+    .trim();
+}
+
 export function runComplianceCheck(
   ocrText: string,
   options?: { requiredRuleIds?: string[] }
@@ -232,7 +268,7 @@ export function runComplianceCheck(
   minorCount: number;
   requiredRuleIds?: string[];
 } {
-  const normalized = ocrText.replace(/\s+/g, " ");
+  const normalized = normalizeOcrText(ocrText);
   const violations: Violation[] = [];
   let critical = 0, major = 0, minor = 0;
   let totalWeight = 0, gotWeight = 0;

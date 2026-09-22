@@ -35,13 +35,31 @@ async function recognizeOnServer(imageDataUrl: string): Promise<{
 }
 
 async function recognizeOnClient(imageDataUrl: string, onProgress?: (status: string, pct: number) => void) {
-  const result = await Tesseract.recognize(imageDataUrl, "eng", {
-    logger: (m) => {
-      if (onProgress) {
-        onProgress(m.status || "recognizing", typeof m.progress === "number" ? Math.round(m.progress * 100) : 0);
-      }
-    },
-  });
+  // PSM 3 = fully automatic page segmentation (default).
+  // PSM 6 = assume a single uniform block — better for product labels with mixed
+  // font sizes, reflections, or rotated text, where auto-layout analysis stumbles.
+  // We try PSM 6 first; if it returns empty text we retry with PSM 3.
+  const tryRecognize = (psm: string) =>
+    Tesseract.recognize(imageDataUrl, "eng", {
+      logger: (m) => {
+        if (onProgress) {
+          onProgress(m.status || "recognizing", typeof m.progress === "number" ? Math.round(m.progress * 100) : 0);
+        }
+      },
+      // Tesseract.js accepts raw Tesseract configuration parameters as extra keys.
+      // @ts-expect-error
+      tessedit_pageseg_mode: psm,
+      // @ts-expect-error
+      tessedit_char_whitelist: "",
+      // @ts-expect-error
+      preserve_interword_spaces: "1",
+    });
+
+  let result = await tryRecognize("6");
+  // If PSM 6 produced no text, fall back to default auto-layout (PSM 3).
+  if (!result.data?.text?.trim()) {
+    result = await tryRecognize("3");
+  }
   return { ...result, source: "tesseract" as const };
 }
 
@@ -251,16 +269,59 @@ export default function ScanPage() {
     } catch (e) {
       const msg = (e as Error)?.message || String(e);
       console.error("OCR failed:", e);
-      alert(
-        "OCR processing encountered issues:\n\n" +
-        `Error: ${msg}\n\n` +
-        "Try the following solutions:\n" +
-        "1. Upload a clearer image with good lighting\n" +
-        "2. Use the sample image to test the app\n" +
-        "3. Try a smaller image file\n" +
-        "4. Check if server OCR is configured\n\n" +
-        "Note: Enhanced preprocessing is now available for better OCR accuracy."
-      );
+      // Save a partial/zero scan instead of showing an opaque alert.
+      // This lets the user see the report page with a clear explanation
+      // rather than a dead-end modal.
+      try {
+        const id = `scan-${Date.now()}`;
+        const emptyCheck = runComplianceCheck("");
+        await saveScan({
+          id,
+          productName: productName || "Untitled Product",
+          manufacturer: null,
+          imageDataUrl: imageDataUrl ?? "",
+          ocrText: "",
+          mrp: null,
+          netQuantity: null,
+          mfgDate: null,
+          score: 0,
+          compliant: false,
+          fontFindings: [],
+          criticalCount: emptyCheck.criticalCount,
+          majorCount: emptyCheck.majorCount,
+          minorCount: emptyCheck.minorCount,
+          violations: [
+            {
+              ruleId: "ocr_failure",
+              ruleName: "OCR / Image Recognition",
+              ruleRef: "—",
+              severity: "critical" as const,
+              message: `Could not extract text from image: ${msg}. ` +
+                "If OCR.space API key is not configured the app uses Tesseract.js, " +
+                "which struggles with metallic / shiny labels, rotated text, or " +
+                "dot-matrix print. Try: (1) a flat, well-lit photo, " +
+                "(2) configure OCR_SPACE_API_KEY for cloud OCR.",
+              matched: false,
+            },
+            ...emptyCheck.violations,
+          ],
+          inspector,
+          location: location || "—",
+          scannedAt: new Date().toISOString(),
+          ocrProvider: provider,
+          category,
+          barcodeValue,
+        });
+        router.push(`/reports/${id}`);
+      } catch (saveErr) {
+        // Absolute last resort — nothing can be saved.
+        console.error("Could not save partial scan:", saveErr);
+        alert(
+          "OCR processing failed and the result could not be saved.\n\n" +
+          `Error: ${msg}\n\n` +
+          "Please try a clearer image with good, even lighting and no glare."
+        );
+      }
     } finally {
       setRunning(false);
     }

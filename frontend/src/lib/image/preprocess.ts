@@ -82,6 +82,7 @@ export async function preprocessImageForOcr(input: string | Blob): Promise<Prepr
 
     // Step 2: Apply contrast stretch
     const range = maxLum - minLum || 1;
+    // Work on original image pixel data
     for (let i = 0, p = 0; i < len; i += 4, p++) {
       const stretched = Math.min(255, Math.max(0, Math.round(((lums[p] - minLum) * 255) / range)));
       data[i] = stretched;     // R
@@ -90,41 +91,47 @@ export async function preprocessImageForOcr(input: string | Blob): Promise<Prepr
       // Alpha remains unchanged
     }
 
-    // Put stretched grayscale image back
+    // Put stretched grayscale image back so the denoising step sees grayscale data
     ctx.putImageData(imageData, 0, 0);
 
-    // Step 3: Fast 3x3 sharpening (unsharp mask)
-    try {
-      const sharpImageData = ctx.getImageData(0, 0, newW, newH);
-      const sharpData = sharpImageData.data;
-      const copy = new Uint8ClampedArray(data);
-
-      for (let y = 1; y < newH - 1; y++) {
-        for (let x = 1; x < newW - 1; x++) {
-          const idx = (y * newW + x) * 4;
-          // Kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
-          const top = ((y - 1) * newW + x) * 4;
-          const bottom = ((y + 1) * newW + x) * 4;
-          const left = (y * newW + (x - 1)) * 4;
-          const right = (y * newW + (x + 1)) * 4;
-
-          const val =
-            5 * copy[idx] -
-            copy[top] -
-            copy[bottom] -
-            copy[left] -
-            copy[right];
-
-          const clamped = val < 0 ? 0 : val > 255 ? 255 : val;
-          sharpData[idx] = clamped;
-          sharpData[idx + 1] = clamped;
-          sharpData[idx + 2] = clamped;
-        }
+    // Step 3: Fast 3x3 Median Blur (Denoising)
+    const denoisedData = new Uint8ClampedArray(len / 4);
+    // ... use current `data` (which is now grayscale) ...
+    for (let y = 1; y < newH - 1; y++) {
+      for (let x = 1; x < newW - 1; x++) {
+        const neighbors = [
+          data[((y - 1) * newW + (x - 1)) * 4], data[((y - 1) * newW + x) * 4], data[((y - 1) * newW + (x + 1)) * 4],
+          data[(y * newW + (x - 1)) * 4], data[(y * newW + x) * 4], data[(y * newW + (x + 1)) * 4],
+          data[((y + 1) * newW + (x - 1)) * 4], data[((y + 1) * newW + x) * 4], data[((y + 1) * newW + (x + 1)) * 4]
+        ];
+        neighbors.sort((a, b) => a - b);
+        denoisedData[y * newW + x] = neighbors[4]; // Median
       }
-      ctx.putImageData(sharpImageData, 0, 0);
-    } catch {
-      // If sharpening fails, keep contrast stretched version
     }
+
+    // Step 4: Fast 3x3 sharpening (unsharp mask) on denoised data
+    const sharpData = new Uint8ClampedArray(len);
+    for (let y = 1; y < newH - 1; y++) {
+      for (let x = 1; x < newW - 1; x++) {
+        const idx = (y * newW + x) * 4;
+        const center = denoisedData[y * newW + x];
+        const top = denoisedData[(y - 1) * newW + x];
+        const bottom = denoisedData[(y + 1) * newW + x];
+        const left = denoisedData[y * newW + (x - 1)];
+        const right = denoisedData[y * newW + (x + 1)];
+
+        const val = 5 * center - top - bottom - left - right;
+        const clamped = val < 0 ? 0 : val > 255 ? 255 : val;
+
+        sharpData[idx] = clamped;
+        sharpData[idx + 1] = clamped;
+        sharpData[idx + 2] = clamped;
+        sharpData[idx + 3] = 255;
+      }
+    }
+
+    // Put processed image data back
+    ctx.putImageData(new ImageData(sharpData, newW, newH), 0, 0);
 
     const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
     const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");

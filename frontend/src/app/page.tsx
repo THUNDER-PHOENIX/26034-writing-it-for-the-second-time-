@@ -1,13 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getAllScans, seedDemoData, type ScanRecord } from "@/lib/storage";
+import { getAllScans, type ScanRecord } from "@/lib/storage";
 
 export default function Dashboard() {
   const [scans, setScans] = useState<ScanRecord[]>([]);
 
   useEffect(() => {
-    seedDemoData();
     getAllScans().then(setScans);
   }, []);
 

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getAllScans, deleteScan, seedDemoData, type ScanRecord } from "@/lib/storage";
+import { getAllScans, deleteScan, type ScanRecord } from "@/lib/storage";
 import { exportToCSV, exportToJSON } from "@/lib/export";
 
 export default function ReportsPage() {
@@ -10,7 +10,6 @@ export default function ReportsPage() {
   const [filter, setFilter] = useState<"all" | "compliant" | "non-compliant">("all");
 
   useEffect(() => {
-    seedDemoData();
     getAllScans().then(setScans);
   }, []);
 

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getAllScans, seedDemoData, type ScanRecord } from "@/lib/storage";
+import { getAllScans, type ScanRecord } from "@/lib/storage";
 
 export default function AnalyticsPage() {
   const [scans, setScans] = useState<ScanRecord[]>([]);
@@ -9,7 +9,6 @@ export default function AnalyticsPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
 
   useEffect(() => {
-    seedDemoData();
     getAllScans().then(setScans);
   }, []);
 

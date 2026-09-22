@@ -57,8 +57,9 @@ export function generateReportPdf(scan: ScanRecord) {
     body: productInfo,
     theme: "grid",
     styles: { fontSize: 9 },
+    headStyles: { fillColor: [30, 64, 175] },
     columnStyles: {
-      0: { fontStyle: "bold", cellWidth: 50 },
+      0: { fontStyle: "bold", cellWidth: 50, fillColor: [248, 250, 252] },
       1: { cellWidth: 120 },
     },
   });
@@ -86,8 +87,9 @@ export function generateReportPdf(scan: ScanRecord) {
     body: inspectionInfo,
     theme: "grid",
     styles: { fontSize: 9 },
+    headStyles: { fillColor: [30, 64, 175] },
     columnStyles: {
-      0: { fontStyle: "bold", cellWidth: 50 },
+      0: { fontStyle: "bold", cellWidth: 50, fillColor: [248, 250, 252] },
       1: { cellWidth: 120 },
     },
   });

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Header } from "@/components/Header";
+import { Initializer } from "@/components/Initializer";
 
 export const metadata: Metadata = {
   title: "Legal Metrology Compliance Portal",
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <Initializer />
         <Header />
         <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
         <footer className="bg-slate-50 border-t border-slate-200 mt-12">

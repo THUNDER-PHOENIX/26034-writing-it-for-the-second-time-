@@ -50,6 +50,28 @@ function localSet(scans: ScanRecord[]) {
   }
 }
 
+export async function updateScanAnywhere(s: ScanRecord): Promise<ScanRecord> {
+  if (isSupabaseConfigured()) {
+    try {
+      return await saveScanRemote(s);
+    } catch (e) {
+      console.warn("Remote update failed, falling back to localStorage:", e);
+    }
+  }
+  // localStorage update
+  const all = localGet();
+  const index = all.findIndex((item) => item.id === s.id);
+  if (index !== -1) {
+    all[index] = s;
+    localSet(all);
+  } else {
+    // If not found, add it
+    all.unshift(s);
+    localSet(all);
+  }
+  return s;
+}
+
 export async function saveScanAnywhere(s: ScanRecord): Promise<ScanRecord> {
   if (isSupabaseConfigured()) {
     try {
@@ -99,6 +121,23 @@ export async function deleteScanAnywhere(id: string): Promise<void> {
   }
   const all = localGet().filter((s) => s.id !== id);
   localSet(all);
+}
+
+export async function updateScanAnywhere(s: ScanRecord): Promise<ScanRecord> {
+  if (isSupabaseConfigured()) {
+    try {
+      return await saveScanRemote(s);
+    } catch (e) {
+      console.warn("Remote update failed, falling back to localStorage:", e);
+    }
+  }
+  const all = localGet();
+  const index = all.findIndex((r) => r.id === s.id);
+  if (index !== -1) {
+    all[index] = s;
+    localSet(all);
+  }
+  return s;
 }
 
 export { isSupabaseConfigured };
