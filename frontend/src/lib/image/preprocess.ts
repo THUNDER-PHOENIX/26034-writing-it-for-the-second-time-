@@ -1,15 +1,9 @@
 "use client";
 
-/**
- * High-performance browser-native image preprocessing for OCR accuracy.
- *
- * Uses HTML5 Canvas API (no Node.js dependencies/Buffers) to perform:
- * 1. Resizing to optimal OCR resolution (max dimension 1600px)
- * 2. Grayscale conversion (standard luminance weighting)
- * 3. Histogram contrast stretching (normalizes shadows & lighting)
- * 4. Crisp 3x3 unsharp convolution filter (sharpens text edges)
+/** Browser-native preprocessing. Local illumination correction can improve
+ * visible low-contrast text; it cannot restore clipped glare or dewarp a label.
+ * The existing JPEG result and image coordinate system remain unchanged.
  */
-
 export interface PreprocessResult {
   dataUrl: string;
   mimeType: "image/jpeg";
@@ -23,124 +17,115 @@ const MAX_SIDE = 1600;
 const JPEG_QUALITY = 0.92;
 
 export async function preprocessImageForOcr(input: string | Blob): Promise<PreprocessResult> {
-  let imgUrl: string;
-  let isTempUrl = false;
-
-  if (typeof input === "string") {
-    imgUrl = input;
-  } else {
-    imgUrl = URL.createObjectURL(input);
-    isTempUrl = true;
-  }
-
+  const isTempUrl = typeof input !== "string";
+  const imgUrl = typeof input === "string" ? input : URL.createObjectURL(input);
   try {
     const img = await loadImage(imgUrl);
     const origW = img.naturalWidth || img.width;
     const origH = img.naturalHeight || img.height;
-
-    // Calculate new dimensions (scale down if > MAX_SIDE)
-    let newW = origW;
-    let newH = origH;
-    if (Math.max(origW, origH) > MAX_SIDE) {
-      if (origW >= origH) {
-        newW = MAX_SIDE;
-        newH = Math.round((origH * MAX_SIDE) / origW);
-      } else {
-        newH = MAX_SIDE;
-        newW = Math.round((origW * MAX_SIDE) / origH);
-      }
+    if (!Number.isFinite(origW) || !Number.isFinite(origH) || origW <= 0 || origH <= 0) {
+      throw new Error("Invalid image dimensions for preprocessing");
     }
-
+    const scale = Math.min(1, MAX_SIDE / Math.max(origW, origH));
+    const newW = Math.max(1, Math.round(origW * scale));
+    const newH = Math.max(1, Math.round(origH * scale));
     const canvas = document.createElement("canvas");
     canvas.width = newW;
     canvas.height = newH;
     const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Could not get 2D canvas context");
-    }
-
-    // Draw and resize
+    if (!ctx) throw new Error("Could not get 2D canvas context");
+    // JPEG has no alpha: composite transparent documents onto white, not black.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, newW, newH);
     ctx.drawImage(img, 0, 0, newW, newH);
-
-    // Get pixel data for processing
     const imageData = ctx.getImageData(0, 0, newW, newH);
     const data = imageData.data;
-    const len = data.length;
-
-    // Step 1: Grayscale & find min/max luminance for contrast stretch
+    const lums = new Uint8Array(newW * newH);
     let minLum = 255;
     let maxLum = 0;
-    const lums = new Uint8Array(newW * newH);
-
-    for (let i = 0, p = 0; i < len; i += 4, p++) {
-      // Standard ITU-R BT.601 luminance
+    for (let p = 0; p < lums.length; p++) {
+      const i = p * 4;
       const lum = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
       lums[p] = lum;
-      if (lum < minLum) minLum = lum;
-      if (lum > maxLum) maxLum = lum;
+      minLum = Math.min(minLum, lum);
+      maxLum = Math.max(maxLum, lum);
     }
-
-    // Step 2: Apply contrast stretch
-    const range = maxLum - minLum || 1;
-    for (let i = 0, p = 0; i < len; i += 4, p++) {
-      const stretched = Math.min(255, Math.max(0, Math.round(((lums[p] - minLum) * 255) / range)));
-      data[i] = stretched;     // R
-      data[i + 1] = stretched; // G
-      data[i + 2] = stretched; // B
-      // Alpha remains unchanged
+    const range = maxLum - minLum;
+    // Integral image gives a bounded O(width*height) local mean calculation.
+    // Float64 avoids overflow on the largest permitted image.
+    const stride = newW + 1;
+    const integral = new Float64Array(stride * (newH + 1));
+    for (let y = 0; y < newH; y++) {
+      let row = 0;
+      for (let x = 0; x < newW; x++) {
+        row += lums[y * newW + x];
+        integral[(y + 1) * stride + x + 1] = integral[y * stride + x + 1] + row;
+      }
     }
-
-    // Put stretched grayscale image back
-    ctx.putImageData(imageData, 0, 0);
-
-    // Step 3: Fast 3x3 sharpening (unsharp mask)
-    try {
-      const sharpImageData = ctx.getImageData(0, 0, newW, newH);
-      const sharpData = sharpImageData.data;
-      const copy = new Uint8ClampedArray(data);
-
+    const radius = Math.max(8, Math.round(Math.min(newW, newH) * 0.03));
+    function localMean(x: number, y: number): number {
+      const left = Math.max(0, x - radius);
+      const top = Math.max(0, y - radius);
+      const right = Math.min(newW, x + radius + 1);
+      const bottom = Math.min(newH, y + radius + 1);
+      const sum = integral[bottom * stride + right] - integral[top * stride + right]
+        - integral[bottom * stride + left] + integral[top * stride + left];
+      return sum / ((right - left) * (bottom - top));
+    }
+    let darkest = 255;
+    let brightest = 0;
+    const sampleStep = Math.max(1, Math.floor(Math.min(newW, newH) / 16));
+    for (let y = 0; y < newH; y += sampleStep) {
+      for (let x = 0; x < newW; x += sampleStep) {
+        const mean = localMean(x, y);
+        darkest = Math.min(darkest, mean);
+        brightest = Math.max(brightest, mean);
+      }
+    }
+    // Conservative blend, enabled only with substantial spatial variation.
+    // This is a lighting heuristic, not a glare/curvature detector.
+    const strength = range > 40 ? Math.min(0.65, Math.max(0, (brightest - darkest - 35) / 120)) : 0;
+    for (let y = 0; y < newH; y++) {
+      for (let x = 0; x < newW; x++) {
+        const p = y * newW + x;
+        const lum = lums[p];
+        // Preserve flat/near-flat images instead of amplifying noise or making
+        // a completely white page black when maxLum equals minLum.
+        const stretched = range > 8 ? ((lum - minLum) * 255) / range : lum;
+        const normalized = strength > 0 ? Math.min(255, lum * 220 / Math.max(40, localMean(x, y))) : stretched;
+        const value = Math.round(stretched * (1 - strength) + normalized * strength);
+        data[p * 4] = value;
+        data[p * 4 + 1] = value;
+        data[p * 4 + 2] = value;
+      }
+    }
+    // Mild edge enhancement avoids the previous 5/-1 kernel's strong halos.
+    const copy = new Uint8ClampedArray(data);
+    if (range > 8) {
       for (let y = 1; y < newH - 1; y++) {
         for (let x = 1; x < newW - 1; x++) {
-          const idx = (y * newW + x) * 4;
-          // Kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
-          const top = ((y - 1) * newW + x) * 4;
-          const bottom = ((y + 1) * newW + x) * 4;
-          const left = (y * newW + (x - 1)) * 4;
-          const right = (y * newW + (x + 1)) * 4;
-
-          const val =
-            5 * copy[idx] -
-            copy[top] -
-            copy[bottom] -
-            copy[left] -
-            copy[right];
-
-          const clamped = val < 0 ? 0 : val > 255 ? 255 : val;
-          sharpData[idx] = clamped;
-          sharpData[idx + 1] = clamped;
-          sharpData[idx + 2] = clamped;
+          const i = (y * newW + x) * 4;
+          const value = Math.round(1.6 * copy[i] - 0.15 * (
+            copy[i - newW * 4] + copy[i + newW * 4] + copy[i - 4] + copy[i + 4]
+          ));
+          data[i] = value;
+          data[i + 1] = value;
+          data[i + 2] = value;
         }
       }
-      ctx.putImageData(sharpImageData, 0, 0);
-    } catch {
-      // If sharpening fails, keep contrast stretched version
     }
-
+    ctx.putImageData(imageData, 0, 0);
     const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
-    const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
-
     return {
       dataUrl,
       mimeType: "image/jpeg",
       preprocessed: true,
       originalSize: { w: origW, h: origH },
       newSize: { w: newW, h: newH },
-      base64,
+      base64: dataUrlToBase64(dataUrl),
     };
   } finally {
-    if (isTempUrl) {
-      URL.revokeObjectURL(imgUrl);
-    }
+    if (isTempUrl) URL.revokeObjectURL(imgUrl);
   }
 }
 
