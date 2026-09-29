@@ -1,57 +1,134 @@
-# Legal Metrology Compliance Checker — SIH 26034
+# Legal Metrology Compliance Checker
 
 A web application that scans product labels and checks them for compliance with the **Legal Metrology (Packaged Commodities) Rules, 2011**.
 
 Built for **Smart India Hackathon — Problem Statement 26034**.
 
-> All application code lives in [`frontend/`](./frontend). See [`frontend/README.md`](./frontend/README.md) for setup, demo, and architecture details.
+---
 
-## Repo layout
+## What it does
 
-```
-.
-├── frontend/            ← Next.js 14 app (this is what you run / deploy)
-├── opencode-writing-my-code/   ← original SIH write-up (gitlink)
-└── README.md            ← (this file)
-```
+1. Inspector uploads / captures a photo of a product label.
+2. Tesseract.js (browser-side OCR) extracts the printed text and per-word bounding boxes.
+3. The rule engine checks the text against the **12 mandatory declarations** (regex + presence detection).
+4. A separate font-size analyzer measures the height of each key declaration relative to the image and flags too-small text.
+5. A compliance score, rule-wise findings, font-size table, and PDF report are produced.
 
-## Quick start
+No backend, no API keys, no billing — runs entirely in the browser. Data is stored in `localStorage`.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Then open http://localhost:3000.
-
-## Demo flow (60 seconds)
-
-1. Open `/scan` → click **"Try a sample"** (loads a test image instantly)
-2. Click **"Run Compliance Check"** — OCR runs (~5–10s)
-3. See the green **COMPLIANT** score (91% on the sample)
-4. Click **"Download PDF"** for the official-looking report
-5. Open `/` for the dashboard view
+---
 
 ## Tech stack
 
-- **Next.js 14** (App Router) + TypeScript
-- **OCR.space** server-side OCR (free tier, 25k req/month, no credit card) with **Tesseract.js 5** as offline fallback
-- **jimp** in-browser image preprocessing (resize, grayscale, contrast stretch, sharpen) before OCR
-- **ZXing-js** barcode scanner (decodes EAN-8/12/13, UPC, Code-128, QR)
-- **Supabase** for cross-device persistence + image storage (Postgres + Storage bucket), with localStorage fallback
-- **jsPDF** + autoTable (PDF generation)
-- **TailwindCSS** (styling)
-- **Per-category rule model** (food / beverage / cosmetic / drug / consumer-good) so the score reflects what *should* be on the product
+| Layer | Tool |
+|---|---|
+| Framework | Next.js 14 (App Router) + TypeScript |
+| OCR | Tesseract.js 5 (WebAssembly) |
+| PDF | jsPDF + jspdf-autotable |
+| Styling | TailwindCSS |
+| Storage | localStorage (Supabase-ready schema) |
+
+---
+
+## Setup
+
+```bash
+# 1. Install Node.js 18+ if you don't have it: https://nodejs.org
+
+# 2. Install dependencies
+npm install
+
+# 3. Run the dev server
+npm run dev
+
+# 4. Open the app
+# http://localhost:3000
+```
+
+That's it. No `.env`, no API keys, no database setup.
+
+---
+
+## Pages
+
+- `/` — Dashboard (stats, charts, recent violations)
+- `/scan` — Upload or capture a product image, run OCR
+- `/reports` — List of all scans, search & filter
+- `/reports/[id]` — Detailed compliance report + PDF download
+- `/about` — Architecture, rules implemented, limitations
+
+---
+
+## Demo flow (for judges)
+
+1. Go to `/scan` → click **"Try a sample"** (generates a compliant test image instantly).
+2. Click **"Run Compliance Check"** — OCR runs in the browser, extracts text in ~5–10 seconds.
+3. The result page shows a green **COMPLIANT** score (~92%) with all 12 declarations checked.
+4. Click **"New Scan"** and try the camera with a real product from your kitchen.
+5. Download the **PDF report** from the result page.
+6. Open `/` to see the dashboard with the scan logged.
+
+**For a non-compliant demo**: capture a product that's missing the MRP, or take a photo of just a part of a label so several fields are missing.
+
+---
+
+## Project structure
+
+```
+src/
+├── app/
+│   ├── layout.tsx        # Header + nav + global wrapper
+│   ├── page.tsx          # Dashboard
+│   ├── scan/page.tsx     # Image upload + OCR + save
+│   ├── reports/
+│   │   ├── page.tsx      # All scans list
+│   │   └── [id]/page.tsx # Single report detail
+│   ├── about/page.tsx    # Architecture & docs (in-app)
+│   └── globals.css
+└── lib/
+    ├── rules.ts          # Rule engine + regex for 12 declarations
+    ├── storage.ts        # localStorage CRUD + seed data
+    └── pdf.ts            # PDF report generator
+```
+
+---
+
+## The 12 mandatory declarations (implemented in `src/lib/rules.ts`)
+
+1. Name & address of manufacturer / packer / importer
+2. Net quantity (g, kg, ml, L)
+3. MRP inclusive of all taxes
+4. Month & year of manufacture / packing
+5. Country of origin (imported goods)
+6. Consumer care details
+7. Best before / expiry date (food items)
+8. Ingredients (food products)
+9. Nutritional information (food products)
+10. Veg / Non-veg symbol
+11. Customer care email / phone
+12. Barcode / machine-readable code
+
+---
 
 ## Deployment
 
-The project is configured for one-click Vercel deployment:
+The project is a standard Next.js app and can be deployed to Vercel in one click:
 
-- `frontend/vercel.json` pins to the `bom1` (Mumbai) region
-- `frontend/.env.example` documents the required environment variables
-- The OCR API route has a 30-second timeout declared inline
+```bash
+npm i -g vercel
+vercel
+```
+
+For production hardening, replace `localStorage` with Supabase (schema is identical to `src/lib/storage.ts` types).
+
+---
 
 ## Team
 
-SIH 2026 — Problem Statement 26034
+Built for SIH 2026 — see `about` page in the running app for full architecture and limitations.
+
+---
+
+## License
+
+MIT
