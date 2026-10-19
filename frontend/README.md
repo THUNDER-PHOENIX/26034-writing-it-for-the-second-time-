@@ -1,128 +1,35 @@
-# Legal Metrology Compliance Checker
+# LabelCheck · SIH 2026 prototype
 
-A web application that scans product labels and checks them for compliance with the **Legal Metrology (Packaged Commodities) Rules, 2011**.
+Prototype for SIH Problem Statement 26034: scan packaged commodity labels, review OCR text, screen selected declarations, save inspection records, and export a PDF.
 
-Built for **Smart India Hackathon — Problem Statement 26034**.
+> **Prototype only.** Not a Government of India service or an authoritative legal checker. OCR and rule results require human review against the current complete rules and package. Do not use the demo sign-in for real identities or sensitive case data.
 
----
-
-## What it does
-
-1. Inspector uploads / captures a photo of a product label.
-2. Tesseract.js (browser-side OCR) extracts the printed text and per-word bounding boxes.
-3. The rule engine checks the text against the **12 mandatory declarations** (regex + presence detection).
-4. A separate font-size analyzer measures the height of each key declaration relative to the image and flags too-small text.
-5. A compliance score, rule-wise findings, font-size table, and PDF report are produced.
-
-No backend, no API keys, no billing — runs entirely in the browser. Data is stored in `localStorage`.
-
----
-
-## Tech stack
-
-| Layer | Tool |
-|---|---|
-| Framework | Next.js 14 (App Router) + TypeScript |
-| OCR | Tesseract.js 5 (WebAssembly) |
-| PDF | jsPDF + jspdf-autotable |
-| Styling | TailwindCSS |
-| Storage | localStorage (Supabase-ready schema) |
-
----
-
-## Setup
+## Run locally
 
 ```bash
-# 1. Install Node.js 18+ if you don't have it: https://nodejs.org
-
-# 2. Install dependencies
 npm install
-
-# 3. Run the dev server
 npm run dev
-
-# 4. Open the app
-# http://localhost:3000
 ```
 
-That's it. No `.env`, no API keys, no database setup.
+Open `http://localhost:3000`. The sample label is generated in the browser. Build with `npm run build`.
 
----
+## OCR options
+
+- If `OCR_SPACE_API_KEY` is configured as a server-side environment variable, the app tries hosted OCR first. Keep this key out of browser-exposed `NEXT_PUBLIC_*` variables.
+- If hosted OCR is unavailable, the app uses Tesseract.js in the browser.
+- Sparse or low-confidence scans receive a second pass over four overlapping, enlarged crops. This can recover some small print but does not guarantee accuracy.
+- OCR is currently English-only. The image-relative text-height display is a visual heuristic, not a statutory font-size calculation.
+- Review the extracted transcript against the original photo. On the report page, choose **Edit report**, correct OCR text, and save to recalculate the text-pattern screen.
+
+## Data and authentication
+
+Without Supabase environment configuration, records stay in the current browser's local storage and are not shared across users or devices. Optional Supabase integration is present, but secure authentication, inspector role enforcement, production retention controls, and evidence integrity are not implemented. Login and registration are demo-only flows.
 
 ## Pages
 
-- `/` — Dashboard (stats, charts, recent violations)
-- `/scan` — Upload or capture a product image, run OCR
-- `/reports` — List of all scans, search & filter
-- `/reports/[id]` — Detailed compliance report + PDF download
-- `/about` — Architecture, rules implemented, limitations
+- `/` — scan summary for the active storage backend
+- `/scan` — upload/capture a label and run OCR screening
+- `/reports` and `/reports/[id]` — search, review, correct transcript, and export scans
+- `/about` — scope and limitations
 
----
-
-## Demo flow (for judges)
-
-1. Go to `/scan` → click **"Try a sample"** (generates a compliant test image instantly).
-2. Click **"Run Compliance Check"** — OCR runs in the browser, extracts text in ~5–10 seconds.
-3. The result page shows a green **COMPLIANT** score (~92%) with all 12 declarations checked.
-4. Click **"New Scan"** and try the camera with a real product from your kitchen.
-5. Download the **PDF report** from the result page.
-6. Open `/` to see the dashboard with the scan logged.
-
-**For a non-compliant demo**: capture a product that's missing the MRP, or take a photo of just a part of a label so several fields are missing.
-
----
-
-## Project structure
-
-```
-src/
-├── app/
-│   ├── layout.tsx        # Header + nav + global wrapper
-│   ├── page.tsx          # Dashboard
-│   ├── scan/page.tsx     # Image upload + OCR + save
-│   ├── reports/
-│   │   ├── page.tsx      # All scans list
-│   │   └── [id]/page.tsx # Single report detail
-│   ├── about/page.tsx    # Architecture & docs (in-app)
-│   └── globals.css
-└── lib/
-    ├── rules.ts          # Rule engine + regex for 12 declarations
-    ├── storage.ts        # localStorage CRUD + seed data
-    └── pdf.ts            # PDF report generator
-```
-
----
-
-## The 12 mandatory declarations (implemented in `src/lib/rules.ts`)
-
-1. Name & address of manufacturer / packer / importer
-2. Net quantity (g, kg, ml, L)
-3. MRP inclusive of all taxes
-4. Month & year of manufacture / packing
-5. Country of origin (imported goods)
-6. Consumer care details
-7. Best before / expiry date (food)
-8. Ingredients (food)
-9. Nutritional information (food)
-10. Veg / Non-veg symbol
-11. Customer care email / phone
-12. Barcode / machine-readable code
-
----
-
-## Deployment
-
-The project is a standard Next.js app and can be deployed to Vercel in one click:
-
-```bash
-npm i -g vercel
-vercel
-```
-
-For production hardening, replace `localStorage` with Supabase (schema is identical to `src/lib/storage.ts` types).
-
----
-
-## Team
-
-Built for SIH 2026 — see `about` page in the running app for full architecture and limitations.
+See [`../docs/problem-statement-26034-audit.md`](../docs/problem-statement-26034-audit.md) for the requirement-by-requirement coverage review and small-print fallback playbook.

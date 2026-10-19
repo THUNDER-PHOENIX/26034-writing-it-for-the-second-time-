@@ -4,10 +4,12 @@
  * High-performance browser-native image preprocessing for OCR accuracy.
  *
  * Uses HTML5 Canvas API (no Node.js dependencies/Buffers) to perform:
- * 1. Resizing to optimal OCR resolution (max dimension 1600px)
+ * 1. Preserve high-resolution label details (downscale only very large images)
  * 2. Grayscale conversion (standard luminance weighting)
- * 3. Histogram contrast stretching (normalizes shadows & lighting)
- * 4. Crisp 3x3 unsharp convolution filter (sharpens text edges)
+ * 3. Gentle contrast stretch (normalizes shadows & lighting)
+ *
+ * Small-print labels are unusually sensitive to destructive denoising and
+ * aggressive sharpening, so we intentionally keep the original pixel detail.
  */
 
 export interface PreprocessResult {
@@ -19,8 +21,8 @@ export interface PreprocessResult {
   base64: string;
 }
 
-const MAX_SIDE = 1600;
-const JPEG_QUALITY = 0.92;
+const MAX_SIDE = 2400;
+const JPEG_QUALITY = 0.96;
 
 export async function preprocessImageForOcr(input: string | Blob): Promise<PreprocessResult> {
   let imgUrl: string;
@@ -80,11 +82,30 @@ export async function preprocessImageForOcr(input: string | Blob): Promise<Prepr
       if (lum > maxLum) maxLum = lum;
     }
 
-    // Step 2: Apply contrast stretch
-    const range = maxLum - minLum || 1;
+    // Trim a small number of extreme pixels so a specular highlight does not
+    // consume the entire contrast range and flatten the label text.
+    const histogram = new Uint32Array(256);
+    for (const luminance of lums) histogram[luminance]++;
+    const pixelCount = lums.length;
+    const lowerTarget = Math.floor(pixelCount * 0.01);
+    const upperTarget = Math.ceil(pixelCount * 0.99);
+    let cumulative = 0;
+    let low = 0;
+    let high = 255;
+    for (let value = 0; value < 256; value++) {
+      cumulative += histogram[value];
+      if (cumulative >= lowerTarget) { low = value; break; }
+    }
+    cumulative = 0;
+    for (let value = 0; value < 256; value++) {
+      cumulative += histogram[value];
+      if (cumulative >= upperTarget) { high = value; break; }
+    }
+    if (high - low < 24) { low = minLum; high = maxLum; }
+    const range = high - low || 1;
     // Work on original image pixel data
     for (let i = 0, p = 0; i < len; i += 4, p++) {
-      const stretched = Math.min(255, Math.max(0, Math.round(((lums[p] - minLum) * 255) / range)));
+      const stretched = Math.min(255, Math.max(0, Math.round(((lums[p] - low) * 255) / range)));
       data[i] = stretched;     // R
       data[i + 1] = stretched; // G
       data[i + 2] = stretched; // B
@@ -94,44 +115,9 @@ export async function preprocessImageForOcr(input: string | Blob): Promise<Prepr
     // Put stretched grayscale image back so the denoising step sees grayscale data
     ctx.putImageData(imageData, 0, 0);
 
-    // Step 3: Fast 3x3 Median Blur (Denoising)
-    const denoisedData = new Uint8ClampedArray(len / 4);
-    // ... use current `data` (which is now grayscale) ...
-    for (let y = 1; y < newH - 1; y++) {
-      for (let x = 1; x < newW - 1; x++) {
-        const neighbors = [
-          data[((y - 1) * newW + (x - 1)) * 4], data[((y - 1) * newW + x) * 4], data[((y - 1) * newW + (x + 1)) * 4],
-          data[(y * newW + (x - 1)) * 4], data[(y * newW + x) * 4], data[(y * newW + (x + 1)) * 4],
-          data[((y + 1) * newW + (x - 1)) * 4], data[((y + 1) * newW + x) * 4], data[((y + 1) * newW + (x + 1)) * 4]
-        ];
-        neighbors.sort((a, b) => a - b);
-        denoisedData[y * newW + x] = neighbors[4]; // Median
-      }
-    }
-
-    // Step 4: Fast 3x3 sharpening (unsharp mask) on denoised data
-    const sharpData = new Uint8ClampedArray(len);
-    for (let y = 1; y < newH - 1; y++) {
-      for (let x = 1; x < newW - 1; x++) {
-        const idx = (y * newW + x) * 4;
-        const center = denoisedData[y * newW + x];
-        const top = denoisedData[(y - 1) * newW + x];
-        const bottom = denoisedData[(y + 1) * newW + x];
-        const left = denoisedData[y * newW + (x - 1)];
-        const right = denoisedData[y * newW + (x + 1)];
-
-        const val = 5 * center - top - bottom - left - right;
-        const clamped = val < 0 ? 0 : val > 255 ? 255 : val;
-
-        sharpData[idx] = clamped;
-        sharpData[idx + 1] = clamped;
-        sharpData[idx + 2] = clamped;
-        sharpData[idx + 3] = 255;
-      }
-    }
-
-    // Put processed image data back
-    ctx.putImageData(new ImageData(sharpData, newW, newH), 0, 0);
+    // Retain edge pixels and thin character strokes: a median filter removes
+    // precisely the tiny punctuation and strokes that matter on package labels.
+    ctx.putImageData(imageData, 0, 0);
 
     const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
     const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");

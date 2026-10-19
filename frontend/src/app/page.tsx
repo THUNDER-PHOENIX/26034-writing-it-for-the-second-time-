@@ -35,15 +35,15 @@ export default function Dashboard() {
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2 max-w-2xl">
           <div className="inline-flex items-center gap-2 bg-blue-800/60 border border-blue-400/30 text-blue-200 text-xs px-3 py-1 rounded-full font-medium">
-            <span>🛡️ Official Inspection Dashboard</span>
+            <span>Prototype · decision support</span>
             <span>•</span>
-            <span>Karnataka Enforcement Zone</span>
+            <span>Sample project workspace</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            Legal Metrology Compliance Monitor
+            Packaged Label Screening
           </h1>
           <p className="text-blue-200 text-sm leading-relaxed">
-            Automated compliance checking for packaged commodities under PCR Rules, 2011. Scan labels, analyze 12 statutory declarations, and generate digital legal reports.
+            Scan package labels, review extracted declarations, and create an inspection record. OCR and rule checks are screening aids; an officer must verify evidence and applicable rules.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -67,21 +67,21 @@ export default function Dashboard() {
         />
         <StatCard
           icon="✅"
-          label="Fully Compliant"
+          label="No Flags Detected"
           value={compliantCount}
-          subtitle={`${compliancePct}% compliance rate`}
+          subtitle={`${compliancePct}% of scans passed current text checks`}
           color="green"
         />
         <StatCard
           icon="⚠️"
-          label="Violations Detected"
+          label="Scans Flagged"
           value={nonCompliantCount}
           subtitle={`${totalCritical} critical · ${totalMajor} major`}
           color="red"
         />
         <StatCard
           icon="🎯"
-          label="Avg. Compliance Score"
+          label="Average Screening Score"
           value={`${avgScore}%`}
           subtitle="Overall standard"
           color="indigo"
@@ -94,8 +94,8 @@ export default function Dashboard() {
         <div className="card p-6 lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Enforcement Compliance Overview</h2>
-              <p className="text-xs text-slate-500">Real-time inspection adherence rate across zones</p>
+              <h2 className="text-base font-semibold text-slate-900">Screening Overview</h2>
+              <p className="text-xs text-slate-500">Overview of scans saved in this browser</p>
             </div>
             <div className="text-right">
               <span className="text-2xl font-bold text-slate-900">{compliancePct}%</span>
@@ -106,8 +106,8 @@ export default function Dashboard() {
           {/* Progress Bar */}
           <div>
             <div className="flex justify-between text-xs font-semibold mb-2">
-              <span className="text-emerald-700">Compliant ({compliantCount})</span>
-              <span className="text-rose-700">Non-Compliant ({nonCompliantCount})</span>
+              <span className="text-emerald-700">No flags ({compliantCount})</span>
+              <span className="text-rose-700">Flagged ({nonCompliantCount})</span>
             </div>
             <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden flex">
               <div className="h-full bg-emerald-500 transition-all" style={{ width: `${compliancePct}%` }} />
@@ -141,15 +141,15 @@ export default function Dashboard() {
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Recent Violations</h2>
-              <p className="text-xs text-slate-500">Products flagged for non-compliance</p>
+              <h2 className="text-base font-semibold text-slate-900">Scans Needing Review</h2>
+              <p className="text-xs text-slate-500">OCR/rule checks flagged these records</p>
             </div>
             <span className="badge badge-red">{recentViolations.length} Flagged</span>
           </div>
 
           {recentViolations.length === 0 ? (
             <div className="text-center py-10 text-slate-500 text-sm">
-              ✨ All scanned products are compliant!
+              No flagged scans in this browser yet.
             </div>
           ) : (
             <div className="space-y-3">
@@ -187,7 +187,7 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Recent Inspection Repository</h2>
-            <p className="text-xs text-slate-500">Latest field scans and enforcement assessments</p>
+            <p className="text-xs text-slate-500">Latest scans saved in the active store</p>
           </div>
           <Link href="/reports" className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1">
             View All Reports & Export →
@@ -220,9 +220,9 @@ export default function Dashboard() {
                   <td className="px-4 py-3.5 font-bold text-slate-800">{s.score}%</td>
                   <td className="px-4 py-3.5">
                     {s.compliant ? (
-                      <span className="badge badge-green">✓ Compliant</span>
+                      <span className="badge badge-green">✓ No flags</span>
                     ) : (
-                      <span className="badge badge-red">✕ Non-Compliant</span>
+                      <span className="badge badge-red">Review</span>
                     )}
                   </td>
                 </tr>

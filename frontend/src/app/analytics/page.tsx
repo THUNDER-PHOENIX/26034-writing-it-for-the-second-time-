@@ -125,15 +125,15 @@ export default function AnalyticsPage() {
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 bg-blue-800/60 border border-blue-400/30 text-blue-200 text-xs px-3 py-1 rounded-full font-medium">
-            <span>📈 Enforcement Intelligence</span>
+            <span>📈 Prototype scan analytics</span>
             <span>•</span>
-            <span>Karnataka State Analytics</span>
+            <span>Current storage only</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            Legal Metrology Enforcement Analytics
+            Label Screening Analytics
           </h1>
           <p className="text-blue-200 text-sm leading-relaxed max-w-2xl">
-            Statewide compliance monitoring, statutory violation frequency trends, category adherence, and repeat offender surveillance across market divisions.
+            Summaries of OCR/rule-screening records in the active store. Counts are not verified violations and do not represent statewide enforcement data.
           </p>
         </div>
 
@@ -158,7 +158,7 @@ export default function AnalyticsPage() {
             onChange={(e) => setSelectedZone(e.target.value)}
             className="bg-blue-950 text-white border border-white/20 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none"
           >
-            <option value="all">All Zones</option>
+            <option value="all">All Locations</option>
             <option value="bengaluru">Bengaluru</option>
             <option value="mysuru">Mysuru</option>
             <option value="hubballi">Hubballi</option>
@@ -169,27 +169,27 @@ export default function AnalyticsPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5 border bg-gradient-to-br from-blue-500/10 to-blue-600/5 text-blue-900 space-y-1">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Inspections</div>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Saved Scans</div>
           <div className="text-3xl font-bold text-slate-900">{total}</div>
-          <div className="text-xs text-slate-500">Across {zoneStats.length} enforcement divisions</div>
+          <div className="text-xs text-slate-500">Across {zoneStats.length} entered locations</div>
         </div>
 
         <div className="card p-5 border bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 text-emerald-900 space-y-1">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance Rate</div>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">No Flags Detected</div>
           <div className="text-3xl font-bold text-emerald-700">{complianceRate}%</div>
-          <div className="text-xs text-slate-500">{compliantCount} of {total} products compliant</div>
+          <div className="text-xs text-slate-500">{compliantCount} of {total} scans passed current text checks</div>
         </div>
 
         <div className="card p-5 border bg-gradient-to-br from-rose-500/10 to-rose-600/5 text-rose-900 space-y-1">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Violations Detected</div>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Scans Flagged</div>
           <div className="text-3xl font-bold text-rose-700">{nonCompliantCount}</div>
-          <div className="text-xs text-slate-500">Requiring legal notice / seizure</div>
+          <div className="text-xs text-slate-500">Review OCR and package evidence</div>
         </div>
 
         <div className="card p-5 border bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 text-indigo-900 space-y-1">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Repeat Offenders</div>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Repeatedly Flagged Names</div>
           <div className="text-3xl font-bold text-indigo-700">{repeatOffenders.length}</div>
-          <div className="text-xs text-slate-500">Packers with &gt;1 flagged violation</div>
+          <div className="text-xs text-slate-500">Names from records with multiple flags</div>
         </div>
       </div>
 
@@ -199,15 +199,15 @@ export default function AnalyticsPage() {
         <div className="card p-6 lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Top Statutory Rule Violations</h2>
-              <p className="text-xs text-slate-500">Frequency of non-compliances under Legal Metrology (PCR) Rules, 2011</p>
+              <h2 className="text-base font-bold text-slate-900">Most Frequent Screening Flags</h2>
+              <p className="text-xs text-slate-500">Pattern counts from OCR results; not confirmed non-compliance</p>
             </div>
-            <span className="badge badge-red">{ruleViolations.length} Distinct Rules Breached</span>
+            <span className="badge badge-red">{ruleViolations.length} check types flagged</span>
           </div>
 
           {ruleViolations.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-sm">
-              ✨ No statutory violations recorded for the selected filter.
+              No flags recorded for the selected filter.
             </div>
           ) : (
             <div className="space-y-4">
@@ -241,11 +241,11 @@ export default function AnalyticsPage() {
           )}
         </div>
 
-        {/* Zonal Division Breakdown */}
+        {/* Location Breakdown */}
         <div className="card p-6 space-y-5">
           <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-base font-bold text-slate-900">Zonal Compliance Rate</h2>
-            <p className="text-xs text-slate-500">Performance across regional enforcement zones</p>
+            <h2 className="text-base font-bold text-slate-900">Scan Summary by Location</h2>
+            <p className="text-xs text-slate-500">Locations entered on saved scan records</p>
           </div>
 
           <div className="space-y-4">
@@ -254,12 +254,12 @@ export default function AnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-800 text-sm">📍 {z.zone}</span>
                   <span className={`badge ${z.rate >= 75 ? "badge-green" : "badge-red"}`}>
-                    {z.rate}% Rate
+                    {z.rate}% with no flags
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>Total Scans: <strong>{z.total}</strong></span>
-                  <span className="text-rose-600">Violations: <strong>{z.nonCompliant}</strong></span>
+                  <span className="text-rose-600">Flagged scans: <strong>{z.nonCompliant}</strong></span>
                 </div>
                 <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div className="h-full bg-emerald-500" style={{ width: `${z.rate}%` }} />
@@ -275,8 +275,8 @@ export default function AnalyticsPage() {
         {/* Category Performance */}
         <div className="card p-6 space-y-4">
           <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-base font-bold text-slate-900">Category-Specific Adherence</h2>
-            <p className="text-xs text-slate-500">Compliance distribution by commodity category</p>
+            <h2 className="text-base font-bold text-slate-900">Screening by Category</h2>
+            <p className="text-xs text-slate-500">Saved scans passing the selected text checks</p>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
@@ -285,7 +285,7 @@ export default function AnalyticsPage() {
                 <div className="text-xs font-semibold text-slate-500 uppercase">{c.category}</div>
                 <div className="text-2xl font-bold text-slate-900">{c.rate}%</div>
                 <div className="text-xs text-slate-600 flex justify-between">
-                  <span>Compliant: {c.compliant}/{c.total}</span>
+                  <span>No flags: {c.compliant}/{c.total}</span>
                   <span className="font-semibold text-emerald-600">
                     {c.rate >= 75 ? "Good" : "Needs Action"}
                   </span>
@@ -299,15 +299,15 @@ export default function AnalyticsPage() {
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Repeat Non-Compliant Entities</h2>
-              <p className="text-xs text-slate-500">Manufacturers/packers with recurring violations</p>
+              <h2 className="text-base font-bold text-slate-900">Names Appearing in Flagged Scans</h2>
+              <p className="text-xs text-slate-500">Automated name extraction can be inaccurate. Verify before drawing conclusions.</p>
             </div>
             <span className="badge badge-red">{repeatOffenders.length} Flagged</span>
           </div>
 
           {repeatOffenders.length === 0 ? (
             <div className="text-center py-8 text-slate-500 text-sm">
-              ✨ No repeat non-compliant manufacturers recorded.
+              No repeated flagged names in this selection.
             </div>
           ) : (
             <div className="space-y-3">
@@ -321,15 +321,15 @@ export default function AnalyticsPage() {
                       🏢 {offender.mfg}
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Last Flagged: {new Date(offender.lastDate).toLocaleDateString()} • {offender.location}
+                      Most Recent Scan: {new Date(offender.lastDate).toLocaleDateString()} • {offender.location}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className="badge badge-red text-xs">
-                      ⚠️ {offender.violations} Violation{offender.violations > 1 ? "s" : ""}
+                      ⚠️ {offender.violations} flagged scan{offender.violations > 1 ? "s" : ""}
                     </span>
                     <div className="text-[11px] text-rose-700 font-semibold mt-1">
-                      Action Recommended
+                      Review records
                     </div>
                   </div>
                 </div>

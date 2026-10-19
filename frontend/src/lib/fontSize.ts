@@ -69,8 +69,8 @@ export function analyzeFontSize(
         rating === "ok"
           ? `Font size OK (${heightPct.toFixed(2)}% of image height).`
           : rating === "warn"
-          ? `Font size appears small (${heightPct.toFixed(2)}% of image height). Rule 6 generally requires declarations to be legible.`
-          : `Font size is too small (${heightPct.toFixed(2)}% of image height). Declaration may be illegible.`;
+          ? `Text is small relative to this image (${heightPct.toFixed(2)}%). Visual estimate only; verify against the applicable package-size rule.`
+          : `Text is very small relative to this image (${heightPct.toFixed(2)}%). Visual estimate only; confirm legibility and statutory dimensions manually.`;
 
       findings.push({
         ruleId: field.ruleId,

@@ -41,7 +41,7 @@ async function recognizeOnClient(imageDataUrl: string, onProgress?: (status: str
   // We try PSM 6 first; if it returns empty text we retry with PSM 3.
   const tryRecognize = (psm: string) =>
     Tesseract.recognize(imageDataUrl, "eng", {
-      logger: (m) => {
+      logger: (m: { status?: string; progress?: number }) => {
         if (onProgress) {
           onProgress(m.status || "recognizing", typeof m.progress === "number" ? Math.round(m.progress * 100) : 0);
         }
@@ -60,6 +60,63 @@ async function recognizeOnClient(imageDataUrl: string, onProgress?: (status: str
   return { ...result, source: "tesseract" as const };
 }
 
+/** Secondary OCR pass for tiny declarations that the whole-image pass misses. */
+async function recognizeSmallPrint(imageDataUrl: string, onProgress?: (status: string, pct: number) => void) {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error("Could not prepare label crops for OCR"));
+    element.src = imageDataUrl;
+  });
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  const overlap = 0.08;
+  const crops = [
+    { x: 0, y: 0, w: 0.5 + overlap, h: 0.5 + overlap },
+    { x: 0.5 - overlap, y: 0, w: 0.5 + overlap, h: 0.5 + overlap },
+    { x: 0, y: 0.5 - overlap, w: 0.5 + overlap, h: 0.5 + overlap },
+    { x: 0.5 - overlap, y: 0.5 - overlap, w: 0.5 + overlap, h: 0.5 + overlap },
+  ];
+  const textParts: string[] = [];
+  const words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[] = [];
+  for (let index = 0; index < crops.length; index++) {
+    const crop = crops[index];
+    const sx = Math.round(crop.x * width);
+    const sy = Math.round(crop.y * height);
+    const sw = Math.round(crop.w * width);
+    const sh = Math.round(crop.h * height);
+    // Enlarge each panel before OCR so the fallback sees more pixels per glyph.
+    const scale = Math.min(2, 2600 / Math.max(sw, sh));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
+    const context = canvas.getContext("2d");
+    if (!context) continue;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    const result = await Tesseract.recognize(canvas, "eng", {
+      logger: (message: { status?: string; progress?: number }) => onProgress?.(`Small print pass ${index + 1}/4: ${message.status || "recognizing"}`, Math.round(((index + (message.progress || 0)) / crops.length) * 100)),
+      tessedit_pageseg_mode: "6",
+      preserve_interword_spaces: "1",
+    } as any);
+    if (result.data.text?.trim()) textParts.push(result.data.text.trim());
+    for (const word of result.data.words || []) {
+      words.push({
+        text: word.text,
+        bbox: {
+          x0: sx + word.bbox.x0 / scale,
+          y0: sy + word.bbox.y0 / scale,
+          x1: sx + word.bbox.x1 / scale,
+          y1: sy + word.bbox.y1 / scale,
+        },
+        confidence: word.confidence,
+      });
+    }
+  }
+  return { text: textParts.join("\n"), words };
+}
+
 export default function ScanPage() {
   const router = useRouter();
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
@@ -70,7 +127,6 @@ export default function ScanPage() {
   const [location, setLocation] = useState("");
   const [inspector, setInspector] = useState("Inspector Demo");
   const [category, setCategory] = useState<Category>("unknown");
-  const [ocrLanguage, setOcrLanguage] = useState<"eng" | "hin" | "kan">("eng");
   const [qualityReport, setQualityReport] = useState<ImageQualityReport | null>(null);
   const [barcodeHistory, setBarcodeHistory] = useState<{ count: number; lastDate: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,7 +228,8 @@ export default function ScanPage() {
 
     let text = "";
     let words: { text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }[] = [];
-    let imageHeight = 1000;
+    let imageHeight = qualityReport?.resolution.h ?? 1000;
+    let ocrImageHeight = imageHeight;
     let provider: OcrSource = "tesseract";
     let processedDataUrl = imageDataUrl;
     let barcodeValue: string | null = null;
@@ -191,10 +248,11 @@ export default function ScanPage() {
         console.warn("Barcode scan failed:", e);
       }
 
-      // 1. Preprocess for OCR (grayscale, contrast stretch, mild sharpen, resize).
+      // 1. Preprocess for OCR (preserve small strokes; gentle contrast and resize).
       try {
         const pre = await preprocessImageForOcr(imageDataUrl);
         processedDataUrl = pre.dataUrl;
+        ocrImageHeight = pre.newSize.h;
         setStatus(`Preprocessed ${pre.originalSize.w}x${pre.originalSize.h} → ${pre.newSize.w}x${pre.newSize.h}`);
       } catch (e) {
         console.warn("Preprocessing failed, using original image:", e);
@@ -208,9 +266,7 @@ export default function ScanPage() {
         text = server.text;
         words = server.words;
         provider = "server";
-        if (words.length > 0) {
-          imageHeight = Math.max(...words.map((w) => w.bbox.y1), 1000);
-        }
+        imageHeight = ocrImageHeight;
         setStatus(`Server OCR (${words.length} words)`);
       } catch (serverErr) {
         console.warn("Server OCR failed, falling back to in-browser Tesseract:", serverErr);
@@ -227,6 +283,28 @@ export default function ScanPage() {
         }));
         imageHeight = (fallback.data as { imageHeight?: number })?.imageHeight ?? Math.max(...words.map((w) => w.bbox.y1), 1000);
         provider = "tesseract";
+      }
+
+      // Run a second, tiled OCR pass when the whole-image result is sparse or
+      // fails to find several expected label fields. This is also the offline
+      // recovery path when the hosted OCR service is unavailable.
+      const initialMatches = runComplianceCheck(text).violations.filter((item) => item.matched).length;
+      if (text.trim().length < 180 || initialMatches < 5 || words.some((word) => word.confidence > 0 && word.confidence < 45)) {
+        setStatus("Checking label crops for small print…");
+        try {
+          const smallPrint = await recognizeSmallPrint(processedDataUrl, (message, pct) => {
+            setStatus(message);
+            setProgress(pct);
+          });
+          const supplementalMatches = runComplianceCheck(smallPrint.text).violations.filter((item) => item.matched).length;
+          if (smallPrint.text.trim() && supplementalMatches > initialMatches) {
+            text = `${text}\n\n[Small-print crop OCR]\n${smallPrint.text}`.trim();
+            words = [...words, ...smallPrint.words];
+            setStatus("Combined full-label and small-print OCR results");
+          }
+        } catch (cropError) {
+          console.warn("Small-print OCR pass failed:", cropError);
+        }
       }
 
       const fields = extractKeyFields(text);
@@ -338,10 +416,10 @@ export default function ScanPage() {
         <p className="text-slate-500 text-sm">Upload a clear image of the product label and run automated compliance check.</p>
         <div className="mt-2 text-xs">
           {ocrEngine === "server" && (
-            <span className="badge badge-green" title="OCR.space server-side OCR with image preprocessing. Best accuracy on real product photos.">OCR: Cloud (high accuracy)</span>
+            <span className="badge badge-green" title="Hosted OCR is available. Results still require human review.">OCR: Hosted + small-print fallback</span>
           )}
           {ocrEngine === "client" && (
-            <span className="badge badge-yellow" title="Server OCR not configured. Falling back to in-browser Tesseract.js.">OCR: Browser (offline)</span>
+            <span className="badge badge-yellow" title="Browser OCR is available offline. Results still require human review.">OCR: Offline + crop fallback</span>
           )}
         </div>
       </div>
@@ -483,20 +561,6 @@ export default function ScanPage() {
                 {CATEGORY_OPTIONS.find((o) => o.value === category)?.hint}
               </div>
             </Field>
-            <Field label="OCR Language Support">
-              <select
-                className="w-full border rounded-md px-3 py-2"
-                value={ocrLanguage}
-                onChange={(e) => setOcrLanguage(e.target.value as "eng" | "hin" | "kan")}
-              >
-                <option value="eng">English (Standard Declarations)</option>
-                <option value="hin">Hindi (हिंदी - Multilingual)</option>
-                <option value="kan">Kannada (ಕನ್ನಡ - Karnataka Zone)</option>
-              </select>
-              <div className="text-[11px] text-slate-500 mt-1">
-                Dual-language validation under Legal Metrology Rule 9
-              </div>
-            </Field>
             <Field label="Inspector">
               <input
                 className="w-full border rounded-md px-3 py-2"
@@ -513,7 +577,7 @@ export default function ScanPage() {
               />
             </Field>
             <div className="text-xs text-slate-500 pt-2">
-              Tip: For best OCR results, capture a flat label in good lighting, avoid glare, and frame the text.
+              Tip: Capture the label flat, close, and in even light. For tiny print, take a second close-up photo of the declaration panel.
             </div>
           </div>
         </div>
@@ -532,8 +596,8 @@ export default function ScanPage() {
           <li>• Ingredients (food items)</li>
           <li>• Nutritional information (food items)</li>
           <li>• Veg / Non-veg symbol</li>
-          <li>• Customer care email / phone</li>
-          <li>• Barcode presence</li>
+          <li>• Consumer care contact (email / phone)</li>
+          <li>• Barcode decoding for product identification (supporting data only)</li>
         </ul>
       </div>
     </div>

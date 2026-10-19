@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import type { ScanRecord } from "./storage";
 
 /**
- * Enhanced PDF report generator with detailed compliance analysis.
+ * PDF export for prototype label-screening results.
  *
  * Generates comprehensive PDF reports including:
  * - Product details and inspector information
@@ -24,12 +24,12 @@ export function generateReportPdf(scan: ScanRecord) {
   // Header
   doc.setFontSize(20);
   doc.setFont("helvetica", "bold");
-  doc.text("Legal Metrology Compliance Report", pageWidth / 2, yPos, { align: "center" });
+  doc.text("LabelCheck · Screening Record", pageWidth / 2, yPos, { align: "center" });
 
   yPos += 10;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text("Packaged Commodities Rules, 2011", pageWidth / 2, yPos, { align: "center" });
+  doc.text("SIH 2026 Prototype · PS 26034", pageWidth / 2, yPos, { align: "center" });
 
   yPos += 15;
 
@@ -99,7 +99,7 @@ export function generateReportPdf(scan: ScanRecord) {
   // Compliance Score Section
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text("Compliance Score", 14, yPos);
+  doc.text("Automated Screening Score", 14, yPos);
   yPos += 10;
 
   // Score box
@@ -119,17 +119,25 @@ export function generateReportPdf(scan: ScanRecord) {
   doc.text(`${scan.score}%`, pageWidth / 2, yPos + 15, { align: "center" });
 
   doc.setFontSize(12);
-  doc.text(scan.compliant ? "COMPLIANT" : "NON-COMPLIANT", pageWidth / 2, yPos + 25, { align: "center" });
+  doc.text(scan.compliant ? "NO ISSUES DETECTED" : "REVIEW REQUIRED", pageWidth / 2, yPos + 25, { align: "center" });
 
   doc.setTextColor(0, 0, 0);
   yPos += scoreBoxHeight + 15;
 
-  // Violation Summary
+  doc.setFontSize(9);
+  doc.setTextColor(120, 53, 15);
+  const disclaimer = "Prototype screening only. OCR can miss small print; this is not a legal compliance determination. Verify the complete package and current rules manually.";
+  const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - 28);
+  doc.text(disclaimerLines, 14, yPos);
+  doc.setTextColor(0, 0, 0);
+  yPos += disclaimerLines.length * 5 + 8;
+
+  // Screening flag summary
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`Critical Violations: ${scan.criticalCount}`, 14, yPos);
-  doc.text(`Major Violations: ${scan.majorCount}`, 80, yPos);
-  doc.text(`Minor Violations: ${scan.minorCount}`, 146, yPos);
+  doc.text(`Critical flags: ${scan.criticalCount}`, 14, yPos);
+  doc.text(`Major flags: ${scan.majorCount}`, 80, yPos);
+  doc.text(`Minor flags: ${scan.minorCount}`, 146, yPos);
 
   yPos += 15;
 
@@ -141,7 +149,7 @@ export function generateReportPdf(scan: ScanRecord) {
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text("Rule-wise Compliance Analysis", 14, yPos);
+  doc.text("Declaration Screening Checks", 14, yPos);
   yPos += 8;
 
   const tableData = scan.violations.map((v) => [
@@ -235,7 +243,7 @@ export function generateReportPdf(scan: ScanRecord) {
 
     const recommendations = [
       "1. Ensure all mandatory declarations are clearly printed on the package",
-      "2. Use font sizes that are legible and meet the minimum height requirements",
+      "2. Inspect declaration legibility and verify applicable statutory dimensions manually",
       "3. Include complete manufacturer/packer/importer details with address",
       "4. Display MRP prominently with the text 'Maximum Retail Price' or 'MRP'",
       "5. Provide accurate net quantity in standard metric units",

@@ -38,7 +38,7 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Inspection Reports</h1>
-        <p className="text-slate-500 text-sm">All scanned products and their compliance history</p>
+        <p className="text-slate-500 text-sm">Scans saved to this browser or configured storage. Automated findings need human review.</p>
       </div>
 
       <div className="card p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -57,7 +57,7 @@ export default function ReportsPage() {
                 filter === f ? "bg-brand-600 border-brand-600 text-white font-medium" : "bg-white hover:bg-slate-50"
               }`}
             >
-              {f === "all" ? "All" : f === "compliant" ? "Compliant" : "Non-Compliant"}
+              {f === "all" ? "All" : f === "compliant" ? "No flags" : "Review needed"}
             </button>
           ))}
         </div>
@@ -110,8 +110,8 @@ export default function ReportsPage() {
                 <td className="px-4 py-3 font-semibold">{s.score}%</td>
                 <td className="px-4 py-3">
                   {s.compliant
-                    ? <span className="badge badge-green">Compliant</span>
-                    : <span className="badge badge-red">Non-Compliant</span>}
+                    ? <span className="badge badge-green">No flags detected</span>
+                    : <span className="badge badge-red">Review needed</span>}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => onDelete(s.id)} className="text-xs text-slate-500 hover:text-red-600 transition-colors">Delete</button>

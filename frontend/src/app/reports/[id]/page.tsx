@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getScanById, updateScan, type ScanRecord } from "@/lib/storage";
 import { generateReportPdf } from "@/lib/pdf";
+import { extractKeyFields, runComplianceCheck } from "@/lib/rules";
+import { requiredRulesFor, type Category } from "@/lib/rules/categories";
 
 export default function ReportDetail({ params }: { params: { id: string } }) {
   const [scan, setScan] = useState<ScanRecord | null>(null);
@@ -10,8 +12,6 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedScan, setEditedScan] = useState<ScanRecord | null>(null);
 
-  // Mock role check
-  const [userRole, setUserRole] = useState<'admin' | 'inspector'>('admin');
 
   useEffect(() => {
     let mounted = true;
@@ -31,7 +31,22 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
 
   const handleSave = async () => {
     if (!editedScan) return;
-    const updated = await updateScan(editedScan);
+    const category = (editedScan.category || "unknown") as Category;
+    const result = runComplianceCheck(editedScan.ocrText, { requiredRuleIds: requiredRulesFor(category) });
+    const fields = extractKeyFields(editedScan.ocrText);
+    const updated = await updateScan({
+      ...editedScan,
+      manufacturer: fields.company,
+      mrp: fields.mrp,
+      netQuantity: fields.netQuantity,
+      mfgDate: fields.mfgDate,
+      violations: result.violations,
+      score: result.score,
+      compliant: result.compliant,
+      criticalCount: result.criticalCount,
+      majorCount: result.majorCount,
+      minorCount: result.minorCount,
+    });
     setScan(updated);
     setEditedScan(updated);
     setIsEditing(false);
@@ -60,16 +75,15 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
           </div>
         </div>
         <div className="flex gap-2">
-          {userRole === 'admin' && (
-            isEditing ? (
+          {isEditing ? (
               <>
                 <button onClick={handleSave} className="btn-primary">Save Changes</button>
                 <button onClick={() => { setIsEditing(false); setEditedScan(scan); }} className="btn-secondary">Cancel</button>
               </>
             ) : (
-              <button onClick={() => setIsEditing(true)} className="btn-secondary">Edit Report (Admin)</button>
+              <button onClick={() => setIsEditing(true)} className="btn-secondary">Edit report</button>
             )
-          )}
+          }
           <button onClick={() => generateReportPdf(scan)} className="btn-primary">Download PDF</button>
         </div>
       </div>
@@ -79,13 +93,13 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
           {/* ... existing chart code ... */}
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-slate-500">Compliance Score</div>
+              <div className="text-sm text-slate-500">Automated screening score</div>
               <div className={`text-4xl font-bold ${scan.compliant ? "text-green-600" : "text-red-600"}`}>{scan.score}%</div>
             </div>
             <div>
               {scan.compliant
-                ? <span className="badge badge-green text-base px-3 py-1">COMPLIANT</span>
-                : <span className="badge badge-red text-base px-3 py-1">NON-COMPLIANT</span>}
+                ? <span className="badge badge-green text-base px-3 py-1">NO ISSUES DETECTED</span>
+                : <span className="badge badge-red text-base px-3 py-1">REVIEW REQUIRED</span>}
             </div>
           </div>
           {/* ... existing chart code ... */}
@@ -138,7 +152,12 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
                 <input className="w-full p-1 border rounded" value={editedScan.mrp ?? ''} onChange={e => setEditedScan({...editedScan, mrp: e.target.value})} />
               </div>
               <div className="mb-2">
-                <label className="text-xs text-slate-500">Compliance Notes</label>
+                <label className="text-xs text-slate-500">OCR text (correct before saving)</label>
+                <textarea className="w-full min-h-36 p-2 border rounded font-mono text-xs" value={editedScan.ocrText} onChange={e => setEditedScan({...editedScan, ocrText: e.target.value})} />
+                <p className="mt-1 text-[11px] text-slate-500">The rule screen and extracted fields are recalculated when you save. Font-size estimates continue to use the original image.</p>
+              </div>
+              <div className="mb-2">
+                <label className="text-xs text-slate-500">Inspection Notes</label>
                 <textarea className="w-full p-1 border rounded" value={editedScan.complianceNotes ?? ''} onChange={e => setEditedScan({...editedScan, complianceNotes: e.target.value})} />
               </div>
               <div className="mb-2">
@@ -163,6 +182,10 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
             <Row k="Barcode" v={`${scan.barcodeValue} (decoded by ZXing)`} />
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <strong>Human review required.</strong> OCR can miss small or obscured text. “No issues detected” means only that the current text scan matched these prototype checks; it is not a legal compliance determination. Verify the package and current rules before taking action.
       </div>
       {/* ... continuation of findings table ... */}
 
@@ -204,7 +227,7 @@ export default function ReportDetail({ params }: { params: { id: string } }) {
         <div className="card overflow-x-auto">
           <div className="p-4 font-semibold border-b flex items-center justify-between">
             <span>Font Size &amp; Readability Analysis</span>
-            <span className="text-xs text-slate-500 font-normal">Based on OCR bounding boxes vs. image height (Rule 6, Schedule II)</span>
+            <span className="text-xs text-slate-500 font-normal">Image-relative OCR estimate only; not a statutory font-size measurement</span>
           </div>
           <table className="w-full text-sm">
             <thead>

@@ -35,8 +35,6 @@ const REQUIRED_BY_CATEGORY: Record<Category, string[]> = {
     "ingredients",
     "nutritional",
     "veg_nonveg",
-    "customer_email_phone",
-    "barcode",
   ],
   beverage: [
     "manufacturer_address",
@@ -46,8 +44,6 @@ const REQUIRED_BY_CATEGORY: Record<Category, string[]> = {
     "consumer_care",
     "best_before",
     "ingredients",
-    "customer_email_phone",
-    "barcode",
   ],
   cosmetic: [
     "manufacturer_address",
@@ -57,8 +53,6 @@ const REQUIRED_BY_CATEGORY: Record<Category, string[]> = {
     "consumer_care",
     "best_before",
     "ingredients",
-    "customer_email_phone",
-    "barcode",
   ],
   drug: [
     "manufacturer_address",
@@ -68,8 +62,6 @@ const REQUIRED_BY_CATEGORY: Record<Category, string[]> = {
     "consumer_care",
     "best_before",
     "ingredients",
-    "customer_email_phone",
-    "barcode",
   ],
   consumer_good: [
     "manufacturer_address",
@@ -77,8 +69,6 @@ const REQUIRED_BY_CATEGORY: Record<Category, string[]> = {
     "mrp",
     "mfg_date",
     "consumer_care",
-    "customer_email_phone",
-    "barcode",
   ],
   unknown: [
     "manufacturer_address",
@@ -86,8 +76,6 @@ const REQUIRED_BY_CATEGORY: Record<Category, string[]> = {
     "mrp",
     "mfg_date",
     "consumer_care",
-    "customer_email_phone",
-    "barcode",
   ],
 };
 

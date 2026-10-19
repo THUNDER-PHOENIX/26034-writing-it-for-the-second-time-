@@ -34,8 +34,8 @@ export default function LoginPage() {
         {/* Logo & Header */}
         <div className="text-center mb-8 flex flex-col items-center">
           <Logo size={68} />
-          <h1 className="text-2xl font-bold text-slate-800 mt-3">Legal Metrology Portal</h1>
-          <p className="text-slate-600 text-sm mt-1">Packaged Commodities Compliance System</p>
+          <h1 className="text-2xl font-bold text-slate-800 mt-3">LabelCheck</h1>
+          <p className="text-slate-600 text-sm mt-1">SIH 2026 prototype · demo sign-in</p>
         </div>
 
         {/* Login Card */}
@@ -82,9 +82,7 @@ export default function LoginPage() {
                 <input type="checkbox" className="rounded border-slate-300" />
                 <span className="text-slate-600">Remember me</span>
               </label>
-              <Link href="/forgot-password" className="text-blue-600 hover:underline">
-                Forgot password?
-              </Link>
+              <span className="text-slate-500">Password reset unavailable in demo mode</span>
             </div>
 
             <button
@@ -105,20 +103,16 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Demo Credentials */}
+          {/* Prototype notice */}
           <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-            <div className="text-xs font-semibold text-blue-900 mb-2">Demo Credentials:</div>
-            <div className="text-xs text-blue-700 space-y-1">
-              <div>Email: inspector@karnataka.gov.in</div>
-              <div>Password: demo123</div>
-            </div>
+            <div className="text-xs font-semibold text-blue-900 mb-1">Prototype access</div>
+            <div className="text-xs text-blue-700">Any non-empty email and password opens a local demo session. This is not secure authentication and does not verify an inspector identity.</div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="text-center mt-6 text-xs text-slate-500">
-          <p>Government of India · Department of Consumer Affairs</p>
-          <p className="mt-1">Legal Metrology Division</p>
+          <p>Independent SIH prototype · not a Government of India service</p>
         </div>
       </div>
     </div>

@@ -49,28 +49,20 @@ export function Header() {
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-      {/* Top Government Bar */}
-      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white text-xs py-1.5 px-4">
+      <div className="bg-slate-900 text-white text-xs py-2 px-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="font-semibold">🇮🇳 Government of India</span>
-            <span className="text-blue-200">|</span>
-            <span>Department of Consumer Affairs</span>
-            <span className="text-blue-200">|</span>
-            <span className="text-blue-200 hidden sm:inline">Legal Metrology Division</span>
+            <span className="font-semibold">SIH 2026 Prototype</span>
+            <span className="text-slate-500">|</span>
+            <span className="text-slate-300 hidden sm:inline">Problem Statement 26034 · Packaged commodities</span>
           </div>
           <div className="flex items-center gap-4 text-blue-100 text-xs">
-            {/* Real-time sync status indicator */}
-            <div className="flex items-center gap-1.5 bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-400/20">
+            <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/10">
               <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
               <span className="text-[11px] font-medium text-blue-100">
-                {isOnline ? "Field Online (Synced)" : "Offline Mode (Local Storage)"}
+                {isOnline ? "Online · browser-local data" : "Offline · browser-local data"}
               </span>
             </div>
-            <span className="hidden md:inline">Toll Free: 1800-11-4000</span>
-            <span className="bg-blue-800 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
-              SIH 2026 • PS 26034
-            </span>
           </div>
         </div>
       </div>
@@ -81,10 +73,10 @@ export function Header() {
           <Logo size={48} />
           <div>
             <div className="font-bold text-slate-900 text-base leading-tight group-hover:text-blue-600 transition-colors">
-              Legal Metrology Compliance Portal
+              LabelCheck
             </div>
             <div className="text-xs text-slate-500 leading-tight">
-              Packaged Commodities (PCR) Rules, 2011 • Enforcement System
+              Packaged commodity screening · SIH 2026
             </div>
           </div>
         </Link>
@@ -120,7 +112,7 @@ export function Header() {
                 </div>
                 <div className="text-[11px] text-emerald-600 font-medium flex items-center justify-end gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Inspector Active
+                  Demo session
                 </div>
               </div>
               <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold grid place-items-center text-sm border border-blue-200">

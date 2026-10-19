@@ -59,8 +59,8 @@ export default function SignupPage() {
         {/* Logo & Header */}
         <div className="text-center mb-8 flex flex-col items-center">
           <Logo size={68} />
-          <h1 className="text-2xl font-bold text-slate-800 mt-3">Create Inspector Account</h1>
-          <p className="text-slate-600 text-sm mt-1">Legal Metrology Enforcement Portal</p>
+          <h1 className="text-2xl font-bold text-slate-800 mt-3">Create Demo Profile</h1>
+          <p className="text-slate-600 text-sm mt-1">Prototype only · no account is created on a server</p>
         </div>
 
         {/* Signup Card */}
@@ -212,7 +212,7 @@ export default function SignupPage() {
             <div className="flex items-start gap-2 text-sm">
               <input type="checkbox" required className="mt-1 rounded border-slate-300" />
               <label className="text-slate-600">
-                I agree to the Terms of Service and Privacy Policy for Legal Metrology Portal
+              I understand this prototype stores the profile in this browser and does not authenticate my identity.
               </label>
             </div>
 
@@ -237,8 +237,7 @@ export default function SignupPage() {
 
         {/* Footer */}
         <div className="text-center mt-6 text-xs text-slate-500">
-          <p>Government of India · Department of Consumer Affairs</p>
-          <p className="mt-1">Legal Metrology Division</p>
+          <p>Independent SIH prototype · not a Government of India service</p>
         </div>
       </div>
     </div>
